@@ -157,12 +157,11 @@ class Employee:
 # ===== 재고 관리 관련 모델 =====
 class InventoryItem:
     """재고 물품 정보 모델"""
-    def __init__(self, item_id, barcode, name, warehouse_id, shelf_id, expiry_date, status, entry_date):
+    def __init__(self, item_id, barcode, name, warehouse_id, expiry_date, status, entry_date):
         self.item_id = item_id
         self.barcode = barcode
         self.name = name
         self.warehouse_id = warehouse_id
-        self.shelf_id = shelf_id
         self.expiry_date = expiry_date
         self.status = status
         self.entry_date = entry_date
@@ -173,39 +172,36 @@ class InventoryItem:
             "barcode": self.barcode,
             "name": self.name,
             "warehouse_id": self.warehouse_id,
-            "shelf_id": self.shelf_id,
             "expiry_date": self.expiry_date,
             "status": self.status,
             "entry_date": self.entry_date
         }
 
-class ShelfStatus:
-    """선반 상태 정보 모델"""
-    def __init__(self, shelf_id, warehouse_id, is_occupied, item_id=None):
-        self.shelf_id = shelf_id
+class WarehouseStatus:
+    """창고 상태 정보 모델"""
+    def __init__(self, warehouse_id, total_capacity, used_capacity, item_count=0):
         self.warehouse_id = warehouse_id
-        self.is_occupied = is_occupied
-        self.item_id = item_id
+        self.total_capacity = total_capacity
+        self.used_capacity = used_capacity
+        self.item_count = item_count
         
     def to_dict(self):
-        data = {
-            "shelf_id": self.shelf_id,
+        return {
             "warehouse_id": self.warehouse_id,
-            "is_occupied": self.is_occupied
+            "total_capacity": self.total_capacity,
+            "used_capacity": self.used_capacity,
+            "utilization_rate": self.used_capacity / self.total_capacity if self.total_capacity > 0 else 0,
+            "item_count": self.item_count
         }
-        if self.item_id:
-            data["item_id"] = self.item_id
-        return data
 
 # ===== 유통기한 관리 관련 모델 =====
 class ExpiryItem:
     """유통기한 관리 대상 물품 정보 모델"""
-    def __init__(self, item_id, barcode, name, warehouse_id, shelf_id, expiry_date, days_remaining, status):
+    def __init__(self, item_id, barcode, name, warehouse_id, expiry_date, days_remaining, status):
         self.item_id = item_id
         self.barcode = barcode
         self.name = name
         self.warehouse_id = warehouse_id
-        self.shelf_id = shelf_id
         self.expiry_date = expiry_date
         self.days_remaining = days_remaining
         self.status = status
@@ -216,7 +212,6 @@ class ExpiryItem:
             "barcode": self.barcode,
             "name": self.name,
             "warehouse_id": self.warehouse_id,
-            "shelf_id": self.shelf_id,
             "expiry_date": self.expiry_date,
             "days_remaining": self.days_remaining,
             "status": self.status

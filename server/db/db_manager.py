@@ -2,6 +2,7 @@
 import os
 import logging
 from typing import Optional, Dict, List, Any, Tuple
+from datetime import datetime
 
 # MySQL 관련 라이브러리
 try:
@@ -57,7 +58,7 @@ class DBManager:
             self.host = os.getenv("DB_HOST", "localhost")
             self.port = os.getenv("DB_PORT", "3306")
             self.user = os.getenv("DB_USER", "root")
-            self.password = os.getenv("DB_PASSWORD", "0000")
+            self.password = os.getenv("DB_PASSWORD", " ")
             self.database = os.getenv("DB_NAME", "rail_db")
             logger.info("환경 변수에서 데이터베이스 설정을 로드했습니다.")
         
@@ -79,24 +80,22 @@ class DBManager:
         
     def _initialize_mock_data(self):
         """가상 데이터 초기화"""
-        # 창고별 선반 데이터
-        shelves = {
-            'A': ['A01', 'A02', 'A03', 'A04', 'A05', 'A06', 'A07', 'A08'],
-            'B': ['B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B08'],
-            'C': ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08'],
-            'D': ['D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07', 'D08']
+        # 창고 데이터 (선반 대신 창고 기반)
+        warehouses = {
+            'A': {'name': '냉동창고', 'total_capacity': 100, 'used_capacity': 35},
+            'B': {'name': '냉장창고', 'total_capacity': 100, 'used_capacity': 42},
+            'C': {'name': '상온창고', 'total_capacity': 100, 'used_capacity': 78}
         }
         
-        # 임의의 빈 선반 설정
-        empty_shelves = {
-            'A': ['A03', 'A07', 'A08'],
-            'B': ['B04', 'B07', 'B08'],
-            'C': ['C02', 'C06', 'C08'],
-            'D': ['D01', 'D03', 'D05', 'D07']
+        # 창고별 물품 카운트
+        warehouse_items = {
+            'A': 35,
+            'B': 42,
+            'C': 78
         }
         
-        self.mock_data['shelves'] = shelves
-        self.mock_data['empty_shelves'] = empty_shelves
+        self.mock_data['warehouses'] = warehouses
+        self.mock_data['warehouse_items'] = warehouse_items
     
     def connect(self) -> bool:
         """데이터베이스 연결"""
@@ -195,25 +194,282 @@ class DBManager:
         
         return status
     
-    # 가상 데이터 관련 메서드
-    def get_empty_shelves(self, warehouse: str) -> List[str]:
-        """지정된 창고의 빈 선반 목록 조회"""
-        if not self.connected:
-            # 가상 데이터 반환
-            return self.mock_data['empty_shelves'].get(warehouse, [])
+    # 가상 데이터 관련 메서드 (수정됨)
+    def get_warehouse_status(self, warehouse_id: str = None) -> Dict[str, Any]:
+        """창고 상태 정보 조회"""
+        if self.connected:
+            try:
+                query = """
+                    SELECT 
+                        w.warehouse_id, 
+                        w.warehouse_type,
+                        w.capacity,
+                        w.used_capacity,
+                        COUNT(u.unit_id) as item_count
+                    FROM warehouse w
+                    LEFT JOIN unit u ON w.warehouse_id = u.warehouse_id
+                """
+                
+                if warehouse_id:
+                    query += " WHERE w.warehouse_id = %s"
+                    query += " GROUP BY w.warehouse_id"
+                    result = self.execute_query(query, (warehouse_id,))
+                else:
+                    query += " GROUP BY w.warehouse_id"
+                    result = self.execute_query(query)
+                
+                if result:
+                    if warehouse_id:
+                        row = result[0]
+                        return {
+                            'warehouse_id': row[0],
+                            'type': row[1],
+                            'total_capacity': row[2],
+                            'used_capacity': row[3],
+                            'item_count': row[4]
+                        }
+                    else:
+                        warehouses = {}
+                        for row in result:
+                            wh_id = row[0]
+                            warehouses[wh_id] = {
+                                'type': row[1],
+                                'total_capacity': row[2],
+                                'used_capacity': row[3],
+                                'item_count': row[4]
+                            }
+                        return warehouses
+            except Exception as e:
+                logger.error(f"창고 상태 쿼리 오류: {str(e)}")
+        
+        # DB 연결이 없거나 쿼리 실패시 가상 데이터 반환
+        if warehouse_id:
+            wh_data = self.mock_data['warehouses'].get(warehouse_id, {})
+            wh_data['item_count'] = self.mock_data['warehouse_items'].get(warehouse_id, 0)
+            return {
+                'warehouse_id': warehouse_id,
+                'type': wh_data.get('name', '미지정'),
+                'total_capacity': wh_data.get('total_capacity', 100),
+                'used_capacity': wh_data.get('used_capacity', 0),
+                'item_count': wh_data.get('item_count', 0)
+            }
+        else:
+            result = {}
+            for wh_id, wh_data in self.mock_data['warehouses'].items():
+                result[wh_id] = {
+                    'type': wh_data.get('name', '미지정'),
+                    'total_capacity': wh_data.get('total_capacity', 100),
+                    'used_capacity': wh_data.get('used_capacity', 0),
+                    'item_count': self.mock_data['warehouse_items'].get(wh_id, 0)
+                }
+            return result
+
+    # 온도 로그 저장 메서드 추가
+    def insert_temperature_log(self, warehouse_id: str, temperature: float) -> bool:
+        """온도 로그를 데이터베이스에 저장합니다.
+        
+        Args:
+            warehouse_id: 창고 ID
+            temperature: 측정된 온도
             
-        query = """
-            SELECT slot_id FROM warehouse_slot 
-            WHERE warehouse_id = %s AND (status IS NULL OR status = 0)
-            ORDER BY slot_id ASC
+        Returns:
+            bool: 저장 성공 여부
         """
+        # 유효한 창고 ID 확인 (A, B, C만 허용)
+        if warehouse_id not in ['A', 'B', 'C']:
+            logger.warning(f"유효하지 않은 창고 ID: {warehouse_id}")
+            return False
+            
+        if not self.ensure_connection():
+            logger.warning(f"DB 연결 없음 - 온도 로그 저장 불가 (창고: {warehouse_id}, 온도: {temperature}°C)")
+            return False
+            
+        try:
+            # abnormal_temperature_logs 저장 (온도가 범위를 벗어난 경우)
+            # 우선 해당 창고의 온도 범위 확인
+            query = "SELECT min_temp, max_temp FROM warehouse WHERE warehouse_id = %s"
+            result = self.execute_query(query, (warehouse_id,))
+            
+            if result and len(result) > 0:
+                min_temp, max_temp = result[0]
+                
+                # 온도가 범위를 벗어난 경우에만 abnormal_temperature_logs에 저장
+                if temperature < min_temp or temperature > max_temp:
+                    status = "high" if temperature > max_temp else "low"
+                    query = """
+                        INSERT INTO abnormal_temperature_logs 
+                        (warehouse_id, temperature, status, recorded_at) 
+                        VALUES (%s, %s, %s, NOW())
+                    """
+                    self.execute_update(query, (warehouse_id, temperature, status))
+                    logger.warning(f"비정상 온도 감지: 창고 {warehouse_id}, 온도 {temperature}°C ({status})")
+                    
+                    # 경고 상태일 때만 로그에 기록
+                    logger.debug(f"온도 로그 저장: 창고 {warehouse_id}, 온도 {temperature}°C")
+                else:
+                    # 정상 범위 온도는 로그에 기록하지 않고 디버그 메시지만 출력
+                    logger.debug(f"정상 온도 감지: 창고 {warehouse_id}, 온도 {temperature}°C (로그 저장 안함)")
+            else:
+                # 데이터베이스에서 온도 범위를 가져올 수 없는 경우
+                logger.debug(f"온도 범위 정보 없음: 창고 {warehouse_id}, 온도 {temperature}°C")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"온도 로그 저장 오류: {str(e)}")
+            return False
+
+    # 일일 출입 통계 조회 메서드 추가
+    def get_daily_access_stats(self, date: str) -> Dict[str, Any]:
+        """특정 날짜의 출입 통계를 조회합니다.
         
-        result = self.execute_query(query, (warehouse,))
-        if result is None or len(result) == 0:
-            # 쿼리 실패 또는 결과 없음 - 가상 데이터 반환
-            return self.mock_data['empty_shelves'].get(warehouse, [])
+        Args:
+            date: 조회할 날짜 (YYYY-MM-DD 형식)
+            
+        Returns:
+            Dict[str, Any]: 출입 통계 정보 (없으면 None)
+        """
+        if not self.ensure_connection():
+            logger.warning(f"DB 연결 없음 - 일일 출입 통계 조회 불가")
+            return None
+            
+        try:
+            query = """
+                SELECT entries, exits, current_count 
+                FROM daily_access_stats 
+                WHERE date = %s
+            """
+            result = self.execute_query(query, (date,))
+            
+            if result and len(result) > 0:
+                row = result[0]
+                return {
+                    "date": date,
+                    "entries": row[0],
+                    "exits": row[1],
+                    "current_count": row[2]
+                }
+            else:
+                # 데이터가 없으면 None 반환
+                return None
+                
+        except Exception as e:
+            logger.error(f"일일 출입 통계 조회 오류: {str(e)}")
+            return None
+    
+    # 일일 출입 통계 업데이트 메서드 추가
+    def update_daily_access_stats(self, stats: Dict[str, Any]) -> bool:
+        """일일 출입 통계를 업데이트합니다.
         
-        return [row[0] for row in result]
+        Args:
+            stats: 업데이트할 통계 정보
+            
+        Returns:
+            bool: 업데이트 성공 여부
+        """
+        if not self.ensure_connection():
+            logger.warning(f"DB 연결 없음 - 일일 출입 통계 업데이트 불가")
+            return False
+            
+        try:
+            date = stats.get("date")
+            entries = stats.get("entries", 0)
+            exits = stats.get("exits", 0)
+            current_count = stats.get("current_count", 0)
+            
+            # 기존 데이터가 있는지 확인
+            check_query = "SELECT id FROM daily_access_stats WHERE date = %s"
+            result = self.execute_query(check_query, (date,))
+            
+            if result and len(result) > 0:
+                # 업데이트
+                query = """
+                    UPDATE daily_access_stats 
+                    SET entries = %s, exits = %s, current_count = %s 
+                    WHERE date = %s
+                """
+                self.execute_update(query, (entries, exits, current_count, date))
+            else:
+                # 새로 삽입
+                query = """
+                    INSERT INTO daily_access_stats 
+                    (date, entries, exits, current_count) 
+                    VALUES (%s, %s, %s, %s)
+                """
+                self.execute_update(query, (date, entries, exits, current_count))
+            
+            logger.debug(f"일일 출입 통계 업데이트: {date}, 입장 {entries}명, 퇴장 {exits}명, 현재 {current_count}명")
+            return True
+            
+        except Exception as e:
+            logger.error(f"일일 출입 통계 업데이트 오류: {str(e)}")
+            return False
+    
+    # 출입 로그 저장 메서드 추가
+    def save_access_log(self, card_id: str, name: str, entry_type: str, timestamp: datetime) -> bool:
+        """출입 로그를 저장합니다.
+        
+        Args:
+            card_id: 카드 ID
+            name: 사용자 이름
+            entry_type: 출입 유형 (entry/exit)
+            timestamp: 타임스탬프
+            
+        Returns:
+            bool: 저장 성공 여부
+        """
+        if not self.ensure_connection():
+            logger.warning(f"DB 연결 없음 - 출입 로그 저장 불가")
+            return False
+            
+        try:
+            query = """
+                INSERT INTO access_logs 
+                (card_id, employee_name, access_type, timestamp) 
+                VALUES (%s, %s, %s, %s)
+            """
+            self.execute_update(query, (card_id, name, entry_type, timestamp))
+            
+            logger.debug(f"출입 로그 저장: {card_id} ({name}) - {entry_type}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"출입 로그 저장 오류: {str(e)}")
+            return False
+
+    # 유통기한 만료 물품 처리 로그 저장
+    def save_expiry_process_log(self, log_entry: Dict[str, Any]) -> bool:
+        """유통기한 만료 물품 처리 로그를 저장합니다.
+        
+        Args:
+            log_entry: 로그 데이터
+            
+        Returns:
+            bool: 저장 성공 여부
+        """
+        if not self.ensure_connection():
+            logger.warning(f"DB 연결 없음 - 유통기한 처리 로그 저장 불가")
+            return False
+            
+        try:
+            item_id = log_entry.get("item_id")
+            action = log_entry.get("action")
+            description = log_entry.get("description")
+            timestamp = log_entry.get("timestamp")
+            
+            query = """
+                INSERT INTO expiry_process_logs 
+                (item_id, action, description, processed_at) 
+                VALUES (%s, %s, %s, %s)
+            """
+            self.execute_update(query, (item_id, action, description, timestamp))
+            
+            logger.debug(f"유통기한 처리 로그 저장: {item_id} ({action})")
+            return True
+            
+        except Exception as e:
+            logger.error(f"유통기한 처리 로그 저장 오류: {str(e)}")
+            return False
 
 # 싱글톤 인스턴스
 db_manager = DBManager()

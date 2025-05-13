@@ -78,7 +78,7 @@ def init_database():
         DB_HOST_VALUE = os.getenv("DB_HOST", "localhost")
         DB_PORT_VALUE = os.getenv("DB_PORT", "3306")
         DB_USER_VALUE = os.getenv("DB_USER", "root")
-        DB_PASSWORD_VALUE = os.getenv("DB_PASSWORD", "0000")
+        DB_PASSWORD_VALUE = os.getenv("DB_PASSWORD", "")
         DB_NAME_VALUE = os.getenv("DB_NAME", "rail_db")
         logger.info("환경 변수에서 데이터베이스 설정을 로드했습니다.")
     

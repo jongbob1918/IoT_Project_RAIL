@@ -24,6 +24,7 @@ matplotlib==3.8.0
 koreanize-matplotlib==0.1.1
 setuptools>=65.5.0
 websocket-client>=1.5.0
+python-socketio[client]>=5.8.0
 
 # test
 pytest==7.4.2
@@ -31,3 +32,6 @@ black==23.9.1
 
 # system monitoring
 psutil==5.9.6
+
+# serial communication
+pyserial==3.5

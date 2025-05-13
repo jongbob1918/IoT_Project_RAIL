@@ -7,7 +7,7 @@ class InventoryController:
     """재고 관리 컨트롤러 클래스
     
     재고 관리 시스템의 비즈니스 로직을 처리하는 클래스입니다.
-    재고 물품 조회, 선반 배치 관리 등의 기능을 제공합니다.
+    재고 물품 조회, 창고별 배치 관리 등의 기능을 제공합니다.
     """
     
     def __init__(self, tcp_handler, websocket_manager, db_helper=None):
@@ -23,14 +23,13 @@ class InventoryController:
         self.db = db_helper
         self.logger = logging.getLogger(__name__)
         
-        # 임시 재고 데이터
+        # 임시 재고 데이터 (shelf_id 제거, 창고 기반 관리)
         self.inventory_items = [
             {
                 "item_id": "A001",
                 "barcode": "A0102250601",
                 "name": "농심 한입 닭가슴살",
                 "warehouse_id": "A",
-                "shelf_id": "A01",
                 "expiry_date": "2025-06-01",
                 "status": "normal",
                 "entry_date": "2025-05-01"
@@ -40,7 +39,6 @@ class InventoryController:
                 "barcode": "B0301250510",
                 "name": "CJ 묵은지 김치",
                 "warehouse_id": "B",
-                "shelf_id": "B01",
                 "expiry_date": "2025-05-10",
                 "status": "warning",
                 "entry_date": "2025-05-03"

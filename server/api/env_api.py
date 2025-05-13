@@ -17,24 +17,20 @@ def get_env_controller():
     if main_controller and hasattr(main_controller, 'env_controller'):
         return main_controller.env_controller
     
-    # 더미 컨트롤러 반환 - 에러 방지
-    class DummyEnvController:
-        def get_status(self):
-            return {"status": "error", "message": "환경 컨트롤러가 초기화되지 않았습니다."}
-        
-        def get_warehouse_status(self, warehouse):
-            return {"status": "error", "message": "환경 컨트롤러가 초기화되지 않았습니다."}
-            
-        def set_target_temperature(self, warehouse, target_temp):
-            return {"status": "error", "message": "환경 컨트롤러가 초기화되지 않았습니다."}
-    
-    return DummyEnvController()
+    # 없으면 None 반환
+    return None
 
 # ==== 환경 상태 조회 ====
 @bp.route('/environment/status', methods=['GET'])
 def get_environment_status():
     """현재 환경 상태를 조회합니다."""
     env_controller = get_env_controller()
+    if not env_controller:
+        return jsonify({
+            "status": "error", 
+            "message": "환경 컨트롤러가 초기화되지 않았습니다."
+        }), 500
+    
     result = env_controller.get_status()
     return jsonify(result)
 

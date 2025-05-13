@@ -17,7 +17,7 @@ except ImportError:
     pass     # python-dotenv가 설치되지 않은 경우 무시
 
 # ===== 서버 설정 =====
-SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
+SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
@@ -25,7 +25,7 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_USER = os.getenv("DB_USER", "root")  # 기본값 수정
-DB_PASSWORD = os.getenv("DB_PASSWORD", "0000")  # 기본값 설정
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")  # 비밀번호 없이 설정
 DB_NAME = os.getenv("DB_NAME", "rail_db")  # rail_db로 통일
 DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
@@ -34,7 +34,6 @@ TCP_PORT = int(os.getenv("TCP_PORT", "9000"))
 HARDWARE_IP = {
     'sort_controller': os.getenv("SORT_CONTROLLER_IP", '192.168.0.101'),
     'env_controller': os.getenv("ENV_AB_CONTROLLER_IP", '192.168.0.102'),  # 환경 제어(A,B 창고)
-    'env_cd_controller': os.getenv("ENV_CD_CONTROLLER_IP", '192.168.0.103'),  # 환경 제어(C,D 창고)
     'access_controller': os.getenv("ACCESS_CONTROLLER_IP", '192.168.0.104')
 }
 
@@ -69,7 +68,7 @@ LOG_MAX_SIZE = int(os.getenv("LOG_MAX_SIZE", str(10 * 1024 * 1024)))  # 10MB
 LOG_BACKUP_COUNT = int(os.getenv("LOG_BACKUP_COUNT", "5"))
 
 # ===== 시스템 모니터링 설정 =====
-STATUS_CHECK_INTERVAL = int(os.getenv("STATUS_CHECK_INTERVAL", "10"))  # 상태 점검 주기(10초)
+STATUS_CHECK_INTERVAL = int(os.getenv("STATUS_CHECK_INTERVAL", "5"))  # 상태 점검 주기(10초)
 
 # ===== 모든 설정을 하나의 딕셔너리로 통합 =====
 CONFIG = {

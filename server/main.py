@@ -2,7 +2,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from utils.logging import setup_logger
 from flask_socketio import SocketIO
-from config import CONFIG, SERVER_HOST, SERVER_PORT, TCP_PORT, DEBUG, SOCKETIO_PING_TIMEOUT, SOCKETIO_PING_INTERVAL, SOCKETIO_ASYNC_MODE
+import datetime  # 타임스탬프 생성용 추가
+from config import CONFIG, SERVER_HOST, SERVER_PORT, TCP_PORT, DEBUG, SOCKETIO_PING_TIMEOUT, SOCKETIO_PING_INTERVAL, SOCKETIO_ASYNC_MODE, MULTI_PORT_MODE, TCP_PORTS, HARDWARE_IP
 from api.sort_api import bp as sort_bp
 from api.inventory_api import bp as inventory_bp
 from api.env_api import bp as env_bp
@@ -11,6 +12,7 @@ from api.expiry_api import bp as expiry_bp
 from controllers.system_controller import get_system_status
 from controllers.sort.sort_controller import SortController
 from utils.tcp_handler import TCPHandler
+from utils.multi_tcp_handler import MultiTCPHandler
 from api import set_controller, register_controller  # 컨트롤러 관리 함수 임포트
 try:
     from utils.tcp_debug_helper import *
@@ -54,21 +56,56 @@ socketio = SocketIO(
     cors_allowed_origins="*", 
     ping_timeout=SOCKETIO_PING_TIMEOUT,
     ping_interval=SOCKETIO_PING_INTERVAL,
-    async_mode=SOCKETIO_ASYNC_MODE
+    async_mode=SOCKETIO_ASYNC_MODE,
+    logger=True,  # SocketIO 로깅 활성화
+    engineio_logger=True,  # Engine.IO 로깅 활성화
+    allowEIO3=True  # Engine.IO 프로토콜 버전 3 허용
 )
 
 # Socket.IO 라우터 등록 - /ws 경로 추가
 @socketio.on('connect', namespace='/ws')
 def handle_connect():
     logger.info("클라이언트 WebSocket 연결됨")
+    
+    # 클라이언트에게 초기 설정값 전송
+    config_data = {
+        "type": "event",
+        "category": "system",
+        "action": "init_config",
+        "payload": {
+            "version": "1.0.0",
+            "warehouses": CONFIG["WAREHOUSES"],
+            "server": {
+                "websocket_url": f"ws://{CONFIG['SERVER_HOST']}:{CONFIG['SERVER_PORT']}/ws",
+                "api_base_url": f"http://{CONFIG['SERVER_HOST']}:{CONFIG['SERVER_PORT']}/api"
+            }
+        },
+        "timestamp": int(datetime.datetime.now().timestamp())
+    }
+    socketio.emit("event", config_data, namespace='/ws')
 
 @socketio.on('disconnect', namespace='/ws')
 def handle_disconnect():
     logger.info("클라이언트 WebSocket 연결 종료됨")
 
 # TCP 핸들러 초기화 및 시작
-tcp_handler = TCPHandler(SERVER_HOST, TCP_PORT)
-tcp_handler.start()  # TCP 서버 시작 호출 추가
+if MULTI_PORT_MODE:
+    # 멀티포트 모드: 각 디바이스별로 별도 포트 사용
+    logger.info("멀티포트 모드로 TCP 핸들러 초기화")
+    devices_config = {}
+    for device_id, port in TCP_PORTS.items():
+        devices_config[device_id] = {
+            'host': SERVER_HOST,
+            'port': port
+        }
+    tcp_handler = MultiTCPHandler(devices_config)
+else:
+    # 단일 포트 모드: 모든 디바이스가 동일 포트 사용
+    logger.info("단일 포트 모드로 TCP 핸들러 초기화")
+    tcp_handler = TCPHandler(SERVER_HOST, TCP_PORT)
+
+# TCP 서버 시작
+tcp_handler.start()
 
 # 컨트롤러 초기화 함수
 def init_controllers():
@@ -80,10 +117,11 @@ def init_controllers():
     controllers["sort"] = sort_controller
     register_controller("sort", sort_controller)
     
-    # TODO: 인벤토리 컨트롤러 초기화
-    # inventory_controller = InventoryController(db_manager)
-    # controllers["inventory"] = inventory_controller
-    # register_controller("inventory", inventory_controller)
+    # 인벤토리 컨트롤러 초기화
+    from controllers.inventory_controller import InventoryController
+    inventory_controller = InventoryController(tcp_handler, socketio, db_manager)
+    controllers["inventory"] = inventory_controller
+    register_controller("inventory", inventory_controller)
     
     # 환경 컨트롤러 초기화
     from controllers.env_controller import EnvController
@@ -91,10 +129,17 @@ def init_controllers():
     controllers["environment"] = env_controller
     register_controller("environment", env_controller)
     
-    # TODO: 출입 컨트롤러 초기화
-    # access_controller = AccessController(tcp_handler)
-    # controllers["access"] = access_controller
-    # register_controller("access", access_controller)
+    # 출입 컨트롤러 초기화
+    from controllers.gate.gate_controller import GateController
+    access_controller = GateController(tcp_handler, socketio, db_manager)
+    controllers["access"] = access_controller
+    register_controller("access", access_controller)
+    
+    # 유통기한 관리 컨트롤러 초기화
+    from controllers.expiry_controller import ExpiryController
+    expiry_controller = ExpiryController(tcp_handler, socketio, db_manager)
+    controllers["expiry"] = expiry_controller
+    register_controller("expiry", expiry_controller)
     
     return controllers
 

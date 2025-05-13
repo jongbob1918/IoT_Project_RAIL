@@ -17,7 +17,7 @@ class TCPHandler:
     }
     
     # ==== TCP 핸들러 초기화 ====
-    def __init__(self, host: str = '192.168.0.10', port: int = 9000):
+    def __init__(self, host: str = '0.0.0.0', port: int = 9000):
         self.host = host
         self.port = port
         self.server_socket = None

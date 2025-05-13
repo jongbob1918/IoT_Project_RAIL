@@ -3,8 +3,7 @@ import logging
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime
-
-# 내부 모듈 임포트
+from controllers.base_controller import BaseController
 from .sort_status import SortStatus
 from .sort_event_handler import SortEventHandler
 from .shelf_manager import ShelfManager
@@ -13,12 +12,10 @@ from .barcode_parser import BarcodeParser
 logger = logging.getLogger(__name__)
 
 # ==== 물류 분류 시스템 컨트롤러 ====
-class SortController:
+class SortController(BaseController):
     # ==== 분류기 컨트롤러 초기화 ====
     def __init__(self, tcp_handler, socketio=None, db_helper=None):
-        self.tcp_handler = tcp_handler
-        self.socketio = socketio
-        self.db_helper = db_helper
+        super().__init__(tcp_handler, socketio, db_helper)
         
         # 상태 관리자 생성
         self.status_manager = SortStatus(self)
@@ -36,19 +33,27 @@ class SortController:
         self.sort_logs = []
         
         # TCP 핸들러에 이벤트 리스너 등록
-        self._register_tcp_handlers()
+        self.register_handlers()
         
         logger.info("분류기 컨트롤러 초기화 완료")
     
-    # ==== TCP 핸들러에 이벤트 리스너 등록 ====
-    def _register_tcp_handlers(self):
-        """TCP 핸들러에 콜백 함수를 등록합니다."""
-        # 분류기(sr) 디바이스의 이벤트 핸들러 등록
-        self.tcp_handler.register_device_handler("sr", "evt", self.event_handler.handle_event)
-        # 응답(res) 타입 핸들러
-        self.tcp_handler.register_device_handler("sr", "res", self.event_handler.handle_response)
-        
-        logger.debug("TCP 핸들러에 이벤트 리스너 등록 완료")
+    def register_handlers(self):
+        self.tcp_handler.register_device_handler("sr", "evt", self.handle_event)
+        self.tcp_handler.register_device_handler("sr", "res", self.handle_response)
+
+    def handle_event(self, message_data: Dict[str, Any]):
+        self.event_handler.handle_event(message_data)
+
+    def process_event(self, content: str):
+        # 필요시 추가적인 이벤트 처리 로직 구현
+        pass
+
+    def handle_response(self, message_data: Dict[str, Any]):
+        self.event_handler.handle_response(message_data)
+
+    def process_response(self, content: str):
+        # 필요시 추가적인 응답 처리 로직 구현
+        pass
 
     # ==== 분류 작업 시작 ====
     def start_sorting(self) -> dict:

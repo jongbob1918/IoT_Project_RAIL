@@ -3,20 +3,23 @@ import logging
 import time
 from typing import Dict, Any, List
 from datetime import datetime
-
-# 내부 모듈 임포트
+from controllers.base_controller import BaseController
 from .rfid_handler import RFIDHandler
 from .access_manager import AccessManager
+from serial_handlers.gate_serial import GateSerialHandler
+
+handler = GateSerialHandler(port='/dev/ttyUSB0')
+handler.connect()
+handler.send_mode_command(register_mode=False)
+
 
 logger = logging.getLogger(__name__)
 
 # ==== 출입 제어 컨트롤러 ====
-class GateController:
+class GateController(BaseController):
     # ==== 출입 컨트롤러 초기화 ====
     def __init__(self, tcp_handler, socketio=None, db_helper=None):
-        self.tcp_handler = tcp_handler
-        self.socketio = socketio
-        self.db_helper = db_helper
+        super().__init__(tcp_handler, socketio, db_helper)
         
         # 출입 관리자 생성
         self.access_manager = AccessManager(db_helper)
@@ -35,23 +38,30 @@ class GateController:
         # 최근 출입 로그 (최근 10개)
         self.recent_logs = []
         
-        # TCP 핸들러에 이벤트 리스너 등록
-        self._register_tcp_handlers()
-        
         # 일일 통계 초기화
         self._initialize_daily_stats()
         
         logger.info("출입 제어 컨트롤러 초기화 완료")
     
-    # ==== TCP 핸들러에 이벤트 리스너 등록 ====
-    def _register_tcp_handlers(self):
-        """TCP 핸들러에 콜백 함수를 등록합니다."""
-        # Gate 컨트롤러(gt)의 이벤트 핸들러 등록
-        self.tcp_handler.register_device_handler("gt", "evt", self.rfid_handler.handle_event)
-        # 응답(res) 타입 핸들러
-        self.tcp_handler.register_device_handler("gt", "res", self.rfid_handler.handle_response)
-        
-        logger.debug("TCP 핸들러에 이벤트 리스너 등록 완료")
+    def register_handlers(self):
+        # gt 디바이스의 이벤트/응답 핸들러 등록
+        self.tcp_handler.register_device_handler("gt", "evt", self.handle_event)
+        self.tcp_handler.register_device_handler("gt", "res", self.handle_response)
+    
+    def handle_event(self, message_data: Dict[str, Any]):
+        # RFID 이벤트는 rfid_handler로 위임
+        self.rfid_handler.handle_event(message_data)
+    
+    def process_event(self, content: str):
+        # 필요시 추가적인 이벤트 처리 로직 구현
+        pass
+    
+    def handle_response(self, message_data: Dict[str, Any]):
+        self.rfid_handler.handle_response(message_data)
+    
+    def process_response(self, content: str):
+        # 필요시 추가적인 응답 처리 로직 구현
+        pass
     
     # ==== 일일 통계 초기화 ====
     def _initialize_daily_stats(self):

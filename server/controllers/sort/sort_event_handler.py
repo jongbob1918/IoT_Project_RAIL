@@ -51,6 +51,7 @@ class SortEventHandler:
         except Exception as e:
             logger.error(f"분류기 이벤트 처리 중 오류: {str(e)}")
     
+
     # ==== 응답 메시지 처리 ====
     def handle_response(self, message: dict):
         try:
@@ -67,6 +68,7 @@ class SortEventHandler:
         except Exception as e:
             logger.error(f"분류기 응답 처리 중 오류: {str(e)}")
     
+
     # ==== 오류 메시지 처리 ====
     def handle_error(self, message: dict):
         try:
@@ -87,6 +89,7 @@ class SortEventHandler:
         except Exception as e:
             logger.error(f"분류기 오류 처리 중 오류: {str(e)}")
     
+
     # ==== IR 센서 이벤트 처리 ====
     def _handle_ir_sensor_event(self, content: str):
         """IR 센서 감지 이벤트를 처리합니다."""
@@ -116,6 +119,7 @@ class SortEventHandler:
                 self.reset_auto_stop_timer()
         except ValueError:
             logger.error(f"IR 센서 값 파싱 오류: {content}")
+    
     
     # ==== 바코드 인식 이벤트 처리 ====
     def _handle_barcode_event(self, content: str):
