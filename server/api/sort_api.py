@@ -1,77 +1,54 @@
-from flask import Blueprint, request, jsonify
-from api import get_controller
+# server/api/sort_api.py
+from flask import Blueprint, jsonify
+from controllers.sort.sort_controller import SortController
 
+# 블루프린트 생성
+sort_bp = Blueprint('sort', __name__, url_prefix='/api/sort')
 
-bp = Blueprint('sort_api', __name__)
+# 컨트롤러 인스턴스 (app.py에서 초기화 후 전달)
+sort_controller = None
 
-def get_sort_controller():
-    """분류 컨트롤러를 가져옵니다."""
-    # 새로운 방식으로 시도
-    controller = get_controller('sort')
-    if controller:
-        return controller
-    
-    # 이전 방식 시도 (이전 버전 호환성)
-    from api import controller as main_controller
-    if main_controller and hasattr(main_controller, 'sort_controller'):
-        return main_controller.sort_controller
-    
-    # 더미 컨트롤러 반환 - 에러 방지
-    class DummySortController:
-        def start_sorting(self):
-            return {"status": "error", "message": "분류 컨트롤러가 초기화되지 않았습니다."}
-        
-        def stop_sorting(self):
-            return {"status": "error", "message": "분류 컨트롤러가 초기화되지 않았습니다."}
-            
-        def emergency_stop(self):
-            return {"status": "error", "message": "분류 컨트롤러가 초기화되지 않았습니다."}
-            
-        def get_status(self):
-            return {"status": "unknown", "message": "분류 컨트롤러가 초기화되지 않았습니다."}
-    
-    return DummySortController()
+# ==== 컨트롤러 설정 ====
+def init_controller(controller):
+    global sort_controller
+    sort_controller = controller
 
-# ==== 분류 시작 ====
-@bp.route('/inbound/start', methods=['POST'])
-def start_inbound():
-    """분류기 작동을 시작합니다."""
-    sort_controller = get_sort_controller()
-    result = sort_controller.start_sorting()
+# ==== 상태 조회 API ====
+@sort_bp.route('/status', methods=['GET'])
+def get_status():
+    """분류기 상태 조회 API"""
+    if not sort_controller:
+        return jsonify({"error": "컨트롤러가 초기화되지 않았습니다."}), 500
     
-    if result.get("status") == "error":
-        return jsonify(result), 400
-    
-    return jsonify(result)
+    status = sort_controller.get_status()
+    return jsonify(status)
 
-# ==== 분류 종료 ====
-@bp.route('/inbound/stop', methods=['POST'])
-def stop_inbound():
-    """분류기 작동을 정지합니다."""
-    sort_controller = get_sort_controller()
-    result = sort_controller.stop_sorting()
+# 아래 API들은 주석 처리 - 나중에 구현
+"""
+# ==== 분류기 시작 API ====
+@sort_bp.route('/start', methods=['POST'])
+def start_sorter():
+    if not sort_controller:
+        return jsonify({"error": "컨트롤러가 초기화되지 않았습니다."}), 500
     
-    if result.get("status") == "error":
-        return jsonify(result), 400
-    
-    return jsonify(result)
+    result = sort_controller.start_sorter()
+    return jsonify(result), 200 if result["success"] else 400
 
-# ==== 비상 정지 ====
-@bp.route('/emergency/stop', methods=['POST'])
+# ==== 분류기 정지 API ====
+@sort_bp.route('/stop', methods=['POST'])
+def stop_sorter():
+    if not sort_controller:
+        return jsonify({"error": "컨트롤러가 초기화되지 않았습니다."}), 500
+    
+    result = sort_controller.stop_sorter()
+    return jsonify(result), 200 if result["success"] else 400
+
+# ==== 분류기 비상정지 API ====
+@sort_bp.route('/emergency', methods=['POST'])
 def emergency_stop():
-    """분류기를 긴급 정지합니다."""
-    sort_controller = get_sort_controller()
+    if not sort_controller:
+        return jsonify({"error": "컨트롤러가 초기화되지 않았습니다."}), 500
+    
     result = sort_controller.emergency_stop()
-    
-    if result.get("status") == "error":
-        return jsonify(result), 400
-    
-    return jsonify(result)
-
-# ==== 분류기 상태 조회 ====
-@bp.route('/inbound/status', methods=['GET'])
-def get_inbound_status():
-    """현재 분류기 상태를 조회합니다."""
-    sort_controller = get_sort_controller()
-    result = sort_controller.get_status()
-    return jsonify(result)
+    return jsonify(result), 200 if result["success"] else 400
+"""

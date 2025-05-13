@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class EnvState(Enum):
     NORMAL = "normal"      # 정상 상태
     WARNING = "warning"    # 경고 상태
-    DANGER = "danger"      # 위험 상태
+    # DANGER = "danger"      # 위험 상태 - 사용되지 않음
 
 # ==== 팬 모드 열거형 ====
 class FanMode(Enum):
@@ -70,26 +70,18 @@ class EnvController(BaseController):
         prev_temp = self.warehouse_temps[warehouse]
         self.warehouse_temps[warehouse] = temp
         
-        # 온도 변경 로그
-        if prev_temp != temp:
-            logger.debug(f"창고 {warehouse} 온도 변경: {prev_temp} → {temp}")
-        
         # 온도 데이터 DB 저장 (경고 상태일 때만)
         if self.db_helper and self.warning_status[warehouse]:
             try:
                 self.db_helper.insert_temperature_log(warehouse, temp)
-                logger.debug(f"경고 상태 - 창고 {warehouse} 온도 로그 저장: {temp}°C")
+                logger.info(f"경고 상태 - 창고 {warehouse} 온도 로그 저장: {temp}°C")
             except Exception as e:
                 logger.error(f"온도 로그 저장 오류: {str(e)}")
         
         # 목표 온도와의 차이 계산 (정보 제공용)
         target_temp = self.target_temps[warehouse]
-        temp_diff = target_temp - temp
+        # temp_diff 계산 제거 - 사용되지 않는 계산
         
-        # 온도 차이가 너무 크면 경고 상태로 설정 (자동 제어는 하지 않음)
-        # 실제 제어는 펌웨어에서 수행
-        if abs(temp_diff) > 5.0 and self.env_states[warehouse] != EnvState.WARNING:
-            logger.warning(f"창고 {warehouse} 온도 차이 큼: 목표={target_temp}, 현재={temp}, 차이={temp_diff}")
         
         # 상태 업데이트 이벤트 발송
         self._emit_status_update()
@@ -229,38 +221,54 @@ class EnvController(BaseController):
         except Exception as e:
             logger.error(f"메시지 처리 오류: {str(e)}")
     
-    # process_event 메서드 수정
+    
     def process_event(self, content: str):
-        # 온도 이벤트: HEtp-19.1;4.2;19.3 (하우스 → 서버)
+        # 온도 이벤트: HEtp-19.1;4.2;19.3
         if content.startswith('HEtp'):
-            # 'HEtp' 다음의 모든 데이터 전달
             self._handle_temperature_event(content[4:])
             return
         # 온도 이벤트 (단축형): tp-19.1;4.2;19.3
         elif content.startswith('tp'):
-            # 디버그 로그 추가
-            logger.debug(f"단축형 온도 이벤트 수신: {content}")
-            # 'tp' 다음의 모든 데이터 전달 (마이너스 부호 포함)
-            temp_data = content[2:]
-            logger.debug(f"온도 데이터 추출: {temp_data}")
-            self._handle_temperature_event(temp_data)
+            logger.info(f"온도 데이터 형식: HEtp{content[2:]}")
+            self._handle_temperature_event(content[2:])
+            return
+            
+        # 경고 상태 이벤트: HEwA1, HEwB0
+        if content.startswith('HEw') and len(content) >= 4:
+            warehouse = content[2:3]  # 두 번째 글자 = 창고 ID
+            if warehouse in ['A', 'B', 'C']:
+                warning_status = content[3:]  # 세 번째 글자부터 = 경고 상태
+                self._handle_warning_event(warehouse, warning_status)
+                return
+        
+        # 팬 상태 이벤트 (프리픽스 형식): HEAC2, HEBC0, HECH1
+        if content.startswith('HE') and len(content) >= 4 and content[2:3] in ['A', 'B', 'C']:
+            warehouse = content[2:3]
+            fan_status = content[3:] if len(content) > 3 else ""
+            self._handle_fan_status_event(warehouse, fan_status)
             return
         
+        # 팬 상태 이벤트 (프리픽스 없는 형식): AC1, BC0, CH1
+        if len(content) >= 3 and content[0:1] in ['A', 'B', 'C']:
+            warehouse = content[0:1]
+            fan_status = content[1:] if len(content) > 1 else ""
+            self._handle_fan_status_event(warehouse, fan_status)
+            return
+        
+        # 팬 상태 이벤트 (C + 두 자리): C00 (모든 창고 정지)
+        if content.startswith('C0') and len(content) == 3:
+            # 모든 창고 정지 모드로 설정
+            for wh in self.warehouses:
+                self._handle_fan_status_event(wh, "00")
+            return
                 
-        # 팬 상태 이벤트: HEAC2, HEBC2, HECH1 (하우스 → 서버)
-        if content.startswith('HE') and len(content) >= 4:
-            warehouse = content[2:3]
-            if warehouse in ['A', 'B', 'C']:
-                fan_status = content[3:] if len(content) > 3 else ""
-                self._handle_fan_status_event(warehouse, fan_status)
-                return
-                
-        # 응답 메시지: HRok (성공), HXe1 (오류)
+        # 응답 메시지: HRok, HXe1
         if content.startswith('HR') or content.startswith('HX'):
             logger.info(f"환경 제어 응답 수신: {content}")
             return
         
-        self.logger.warning(f"알 수 없는 이벤트 형식: {content}")
+        # 처리되지 않은 이벤트는 디버그 레벨 로그만 남김
+        logger.debug(f"처리되지 않은 이벤트: {content}")
     
     # _handle_temperature_event 메서드 수정
     def _handle_temperature_event(self, content: str):
@@ -275,11 +283,8 @@ class EnvController(BaseController):
                 logger.warning("온도 데이터 없음")
                 return
             
-            logger.debug(f"온도 이벤트 처리 시작: {content}")
-            
             # 세미콜론으로 구분된 온도 값들 파싱
             temps = content.split(';')
-            logger.debug(f"파싱된 온도 값: {temps}")
             
             # 각 창고별 온도 할당 (창고 순서는 A, B, C 순으로 가정)
             warehouses = ['A', 'B', 'C']
@@ -291,16 +296,31 @@ class EnvController(BaseController):
                 try:
                     # 온도 문자열 정리 (공백 제거)
                     temp_str = temp_str.strip()
-                    logger.debug(f"창고 {warehouses[i]} 온도 문자열: '{temp_str}'")
                     
-                    # 온도 파싱
+                    # 온도 파싱 - 이전 값과 다를 경우에만 업데이트
                     try:
                         temp = float(temp_str)
                         warehouse = warehouses[i]
+                        
+                        # 이전 온도와 다를 경우 로그 출력 및 업데이트
+                        prev_temp = self.warehouse_temps[warehouse]
+                        if prev_temp != temp:
 
-                        # 온도 업데이트
-                        self.update_temperature(warehouse, temp)
-                        logger.debug(f"창고 {warehouse} 온도 업데이트: {temp}°C")
+                            
+                            # 온도 업데이트 - 펌웨어에서 받은 값 그대로 사용
+                            self.warehouse_temps[warehouse] = temp
+                            
+                            # 목표 온도와의 차이 계산
+                            target_temp = self.target_temps[warehouse]
+                            # 불필요한 temp_diff 계산 제거
+                            
+                            
+                            # 온도 업데이트 이벤트 발송
+                            self._emit_socketio_event("temperature_update", {
+                                "warehouse_id": warehouse,
+                                "temperature": temp
+                            })
+                            
                     except ValueError as ve:
                         logger.warning(f"온도 변환 오류 ('{temp_str}'): {ve}")
                         continue
@@ -313,7 +333,6 @@ class EnvController(BaseController):
     
     # ==== 경고 이벤트 처리 ====
     def _handle_warning_event(self, warehouse: str, warning_str: str):
-
         try:
             # 데이터 유효성 확인
             if warehouse not in self.warehouses:
@@ -429,7 +448,6 @@ class EnvController(BaseController):
     def _emit_socketio_event(self, event_name: str, data: dict):
         """WebSocket 이벤트를 발송합니다."""
         if not self.socketio:
-            logger.warning(f"Socket.IO 없음 - 이벤트 발송 불가: {event_name}")
             return
         
         try:
@@ -442,15 +460,20 @@ class EnvController(BaseController):
                 "timestamp": int(time.time())
             }
             
-            # '/ws' 네임스페이스로만 이벤트 발송
-            self.socketio.emit("event", standard_event, namespace='/ws')
-            logger.debug(f"Socket.IO 이벤트 발송: {event_name}")
+            # 표준화된 이벤트 발송
+            self.socketio.emit("event", standard_event, namespace="/ws")
         except Exception as e:
             logger.error(f"Socket.IO 이벤트 발송 오류: {str(e)}")
     
     # ==== 상태 업데이트 이벤트 발송 ====
     def _emit_status_update(self):
-        self._emit_socketio_event("environment_update", self.get_status()["data"])
-
+        """환경 상태가 변경될 때 소켓 이벤트를 발송합니다."""
+        # 개별 _handle_temperature_event에서 이벤트를 직접 발송하므로 여기서는 아무 작업도 하지 않음
+        pass
+    
+    # ==== 응답 처리 ====
     def handle_response(self, message_data: Dict[str, Any]):
-        super().handle_response(message_data)
+        """TCP 응답 처리"""
+        if 'content' in message_data:
+            content = message_data['content']
+            logger.info(f"환경 제어 응답: {content}")

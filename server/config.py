@@ -33,7 +33,7 @@ DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}
 TCP_PORT = int(os.getenv("TCP_PORT", "9000"))
 HARDWARE_IP = {
     'sort_controller': os.getenv("SORT_CONTROLLER_IP", '192.168.0.101'),
-    'env_controller': os.getenv("ENV_AB_CONTROLLER_IP", '192.168.0.102'),  # 환경 제어(A,B 창고)
+    'env_controller': os.getenv("ENV_AB_CONTROLLER_IP", '192.168.2.4'),  # 환경 제어(A,B 창고)
     'access_controller': os.getenv("ACCESS_CONTROLLER_IP", '192.168.0.104')
 }
 

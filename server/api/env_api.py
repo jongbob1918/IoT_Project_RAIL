@@ -1,9 +1,20 @@
 # server/api/env_api.py
 from flask import Blueprint, request, jsonify
 from api import get_controller
+import logging
+from utils.middleware import validate_request
 
 # Blueprint 초기화 - 고유한 이름 부여
 bp = Blueprint('env_api', __name__)
+logger = logging.getLogger("api.environment")
+
+# 외부에서 스케줄러 인스턴스를 저장할 변수
+_temp_scheduler = None
+
+def register_temp_scheduler(scheduler):
+    """온도 스케줄러 인스턴스 등록"""
+    global _temp_scheduler
+    _temp_scheduler = scheduler
 
 def get_env_controller():
     """환경 제어 컨트롤러를 가져옵니다."""
@@ -83,3 +94,73 @@ def set_environment_control():
         return jsonify(result), 400
     
     return jsonify(result)
+
+# 온도 설정 API
+@bp.route('/temperature', methods=['POST'])
+@validate_request({
+    "required": ["warehouse", "temperature"],
+    "types": {
+        "warehouse": str,
+        "temperature": int
+    }
+})
+def set_temperature():
+    """특정 창고의 목표 온도를 설정합니다."""
+    data = request.json
+    warehouse = data.get('warehouse')
+    temperature = data.get('temperature')
+    
+    # 입력값 검증
+    if warehouse not in ['A', 'B', 'C']:
+        return jsonify({"status": "error", "message": "유효하지 않은 창고 ID입니다. A, B, C 중 하나여야 합니다."}), 400
+    
+    # 온도 범위 검증 (창고별 적정 범위)
+    valid_ranges = {
+        'A': (-30, -18),  # 냉동
+        'B': (0, 10),     # 냉장
+        'C': (15, 25)     # 상온
+    }
+    
+    min_temp, max_temp = valid_ranges[warehouse]
+    if temperature < min_temp or temperature > max_temp:
+        return jsonify({
+            "status": "error", 
+            "message": f"{warehouse} 창고의 온도는 {min_temp}°C에서 {max_temp}°C 사이여야 합니다."
+        }), 400
+    
+    # 환경 컨트롤러를 통해 명령 전송
+    env_controller = get_env_controller()
+    if not env_controller:
+        return jsonify({"status": "error", "message": "환경 제어 컨트롤러가 초기화되지 않았습니다."}), 500
+    
+    # 명령 전송
+    success = env_controller.set_temperature(warehouse, temperature)
+    
+    # 스케줄러의 목표 온도도 업데이트
+    if success and _temp_scheduler:
+        _temp_scheduler.update_target_temp(warehouse, temperature)
+    
+    if success:
+        return jsonify({
+            "status": "success",
+            "message": f"{warehouse} 창고 온도가 {temperature}°C로 설정되었습니다."
+        })
+    else:
+        return jsonify({
+            "status": "error",
+            "message": f"{warehouse} 창고 온도 설정 중 오류가 발생했습니다."
+        }), 500
+
+# 온도 경고 조회 API
+@bp.route('/warnings', methods=['GET'])
+def get_temperature_warnings():
+    """현재 발생 중인 온도 경고를 조회합니다."""
+    env_controller = get_env_controller()
+    if not env_controller:
+        return jsonify({"status": "error", "message": "환경 제어 컨트롤러가 초기화되지 않았습니다."}), 500
+    
+    warnings = env_controller.get_warnings()
+    return jsonify({
+        "status": "success",
+        "data": warnings
+    })

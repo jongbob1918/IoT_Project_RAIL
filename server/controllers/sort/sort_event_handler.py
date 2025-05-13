@@ -1,6 +1,8 @@
 import logging
 import threading
 import time
+# 자동 정지 타이머 시간 (초)
+AUTO_STOP_TIMEOUT = 7.0
 from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -8,10 +10,9 @@ logger = logging.getLogger(__name__)
 # ==== 분류기 이벤트 처리 클래스 ====
 class SortEventHandler:
     # ==== 이벤트 핸들러 초기화 ====
-    def __init__(self, controller, tcp_handler, shelf_manager):
+    def __init__(self, controller, tcp_handler):
         self.controller = controller
         self.tcp_handler = tcp_handler
-        self.shelf_manager = shelf_manager
         
         # 바코드 처리중 상태
         self.processing_barcode = False
@@ -107,13 +108,13 @@ class SortEventHandler:
                     self.controller.status_manager.motor_active = True
                     
                     # 상태 업데이트 이벤트 발송
-                    self.controller._update_status()
+                    # 불필요한 중복 상태 업데이트 제거
                 
                 # 대기 물품 수 증가
                 self.controller.status_manager.items_waiting += 1
                 
                 # 상태 업데이트 이벤트 발송
-                self.controller._update_status()
+                # 불필요한 중복 상태 업데이트 제거
                 
                 # 자동 정지 타이머 초기화
                 self.reset_auto_stop_timer()
@@ -125,7 +126,7 @@ class SortEventHandler:
     def _handle_barcode_event(self, content: str):
         """바코드 인식 이벤트를 처리합니다."""
         # 값 추출 (bcA12123456 - A=구역, 12=물품번호, 123456=유통기한)
-        if len(content) < 4:  # 최소 'bcA'
+        if len(content) < 3:  # 최소 'bc' + 바코드 데이터
             logger.warning(f"잘못된 바코드 형식: {content}")
             return
         
@@ -137,56 +138,12 @@ class SortEventHandler:
         self.processing_barcode = True
         
         try:
-            # 바코드 데이터 추출
-            barcode_data = content[2:]  # 'bc' 이후 데이터
+            # 바코드 데이터 추출 ('bc' 이후 데이터)
+            barcode_data = content[2:]
             
-            # 바코드 형식: 구역(1자리) + 물품번호(2자리) + 유통기한(6자리)
-            if len(barcode_data) < 9:  # 9자리(1+2+6) 미만이면 오류
-                logger.error(f"잘못된 바코드 데이터 형식: {barcode_data}")
-                # 오류물품(E) 분류 명령 전송
-                self._send_sort_command("E")
-                return
-            
-            # 바코드 파싱
-            category = barcode_data[0]  # 구역 (A, B, C 등)
-            item_code = barcode_data[1:3]  # 물품번호
-            expiry_date = barcode_data[3:9]  # 유통기한 (YYMMDD)
-            
-            # 유통기한 형식 변환 (YYMMDD -> YYYY-MM-DD)
-            year = f"20{expiry_date[0:2]}"
-            month = expiry_date[2:4]
-            day = expiry_date[4:6]
-            formatted_date = f"{year}-{month}-{day}"
-            
-            # 구역 결정 (인식된 구역 그대로 사용)
-            warehouse = category
-            
-            # 선반 할당
-            shelf = None
-            if warehouse != "E":  # 오류물품(E)은 선반 할당 안함
-                shelf = self.shelf_manager.assign_shelf(warehouse)
-            
-            # 분류 명령 전송
-            self._send_sort_command(warehouse)
-            
-            # 항목 정보 생성
-            item_info = {
-                "barcode": barcode_data,
-                "category": warehouse,
-                "item_code": item_code,
-                "expiry_date": formatted_date,
-                "shelf": shelf
-            }
-            
-            # DB에 물품 정보 저장
-            if shelf:
-                self.shelf_manager.save_item(item_info)
-            
-            # 웹소켓 이벤트 발송
-            self.controller._emit_socketio_event("barcode_scanned", item_info)
-            
-            # 로그에 분류 정보 추가
-            self.controller.add_sort_log(item_info)
+            # 컨트롤러의 바코드 이벤트 핸들러 호출 (BarcodeParser는 컨트롤러 내부에서 사용)
+            # 컨트롤러가 바코드 파싱과 분류 명령 전송을 담당
+            self.controller._handle_barcode_event("bc" + barcode_data)
             
             # 자동 정지 타이머 초기화 (물품이 인식되었으므로)
             self.reset_auto_stop_timer()
@@ -273,7 +230,7 @@ class SortEventHandler:
         
         # 분류기가 작동 중인 경우에만 타이머 설정
         if self.controller.status_manager.state == "running":
-            self.auto_stop_timer = threading.Timer(7.0, self._auto_stop_timeout)
+            self.auto_stop_timer = threading.Timer(AUTO_STOP_TIMEOUT, self._auto_stop_timeout)
             self.auto_stop_timer.daemon = True
             self.auto_stop_timer.start()
     
@@ -288,7 +245,7 @@ class SortEventHandler:
         """자동 정지 타이머 만료 시 호출됩니다."""
         # 타이머 발생 시 분류기가 여전히 작동 중이고 대기 물품이 없는 경우
         if self.controller.status_manager.state == "running" and self.controller.status_manager.items_waiting == 0:
-            logger.info("자동 정지: 7초간 물품 없음")
+            logger.info("자동 정지: 물품 없음")
             
             # 정지 명령 전송
             command = "SCsp\n"  # 분류기(S) 명령(C) 정지(sp)

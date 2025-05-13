@@ -8,38 +8,43 @@ logger = logging.getLogger(__name__)
 # ==== 바코드 파싱 클래스 ====
 class BarcodeParser:
     def __init__(self):
-        # 분류 코드 매핑 (첫 자리 숫자 → 창고)
+        # 분류 코드 매핑 (첫 자리 → 창고)
+        # 첫 자리가 이미 알파벳(A, B, C, E)인 경우 그대로 사용
         self.category_map = {
-            "1": "A",  # 냉동
-            "2": "B",  # 냉장
-            "3": "C",  # 상온
-            "0": "E"   # 오류물품
+            "": "A",     # 빈 값은 A로 처리
+            "1": "A",    # 냉동 (기존 코드 호환)
+            "2": "B",    # 냉장 (기존 코드 호환)
+            "3": "C",    # 상온 (기존 코드 호환)
+            "0": "E",    # 오류물품 (기존 코드 호환)
+            "A": "A",    # 냉동 (직접 지정)
+            "B": "B",    # 냉장 (직접 지정)
+            "C": "C",    # 상온 (직접 지정)
+            "E": "E"     # 오류물품 (직접 지정)
         }
     
     # ==== 바코드 파싱 메소드 ====
     def parse(self, barcode: str) -> Tuple[bool, Optional[Dict]]:
         """
-        바코드 파싱 - 형식: 분류(1자리) + 물품번호(2자리) + 판매자(2자리) + 유통기한(6자리, YYMMDD)
+        바코드 파싱 - 형식: 분류(1자리) + 물품번호(2자리) + 유통기한(6자리, YYMMDD)
         
         Returns:
             (성공 여부, 파싱 결과 딕셔너리 또는 None)
         """
         try:
             # 바코드 길이 확인
-            if len(barcode) < 11:
+            if len(barcode) < 9:
                 logger.error(f"잘못된 바코드 형식 (길이 부족): {barcode}")
                 return False, None
             
             # 파싱 수행
             category_code = barcode[0]
             item_code = barcode[1:3]  # 물품번호 2자리
-            vendor_code = barcode[3:5]
             
             # 유통기한 파싱 
             try:
-                year = int(barcode[5:7])
-                month = int(barcode[7:9])
-                day = int(barcode[9:11])
+                year = int(barcode[3:5])
+                month = int(barcode[5:7])
+                day = int(barcode[7:9])
                 
                 # 2000년대인 경우 20XX 형식으로 변환
                 full_year = 2000 + year
@@ -48,9 +53,9 @@ class BarcodeParser:
                 datetime(full_year, month, day)
                 
                 # YYYY-MM-DD 형식
-                expiry_date = f"20{barcode[5:7]}-{barcode[7:9]}-{barcode[9:11]}"
+                expiry_date = f"20{barcode[3:5]}-{barcode[5:7]}-{barcode[7:9]}"
             except ValueError:
-                logger.error(f"잘못된 유통기한 형식: {barcode[5:11]}")
+                logger.error(f"잘못된 유통기한 형식: {barcode[3:9]}")
                 return False, None
             
             # 분류 카테고리 결정
@@ -64,7 +69,6 @@ class BarcodeParser:
                 "barcode": barcode,
                 "category": warehouse,
                 "item_code": item_code,
-                "vendor_code": vendor_code,
                 "expiry_date": expiry_date
             }
             

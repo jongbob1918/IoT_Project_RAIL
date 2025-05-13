@@ -4,7 +4,7 @@ from utils.logging import setup_logger
 from flask_socketio import SocketIO
 import datetime  # 타임스탬프 생성용 추가
 from config import CONFIG, SERVER_HOST, SERVER_PORT, TCP_PORT, DEBUG, SOCKETIO_PING_TIMEOUT, SOCKETIO_PING_INTERVAL, SOCKETIO_ASYNC_MODE, MULTI_PORT_MODE, TCP_PORTS, HARDWARE_IP
-from api.sort_api import bp as sort_bp
+from api.sort_api import sort_bp
 from api.inventory_api import bp as inventory_bp
 from api.env_api import bp as env_bp
 from api.access_api import bp as access_bp
@@ -13,6 +13,7 @@ from controllers.system_controller import get_system_status
 from controllers.sort.sort_controller import SortController
 from utils.tcp_handler import TCPHandler
 from utils.multi_tcp_handler import MultiTCPHandler
+from env_temp_scheduler import EnvTempScheduler  # 환경 제어 온도 스케줄러 임포트
 from api import set_controller, register_controller  # 컨트롤러 관리 함수 임포트
 try:
     from utils.tcp_debug_helper import *
@@ -57,8 +58,8 @@ socketio = SocketIO(
     ping_timeout=SOCKETIO_PING_TIMEOUT,
     ping_interval=SOCKETIO_PING_INTERVAL,
     async_mode=SOCKETIO_ASYNC_MODE,
-    logger=True,  # SocketIO 로깅 활성화
-    engineio_logger=True,  # Engine.IO 로깅 활성화
+    logger=False,  # SocketIO 로깅 비활성화
+    engineio_logger=False,  # Engine.IO 로깅 비활성화
     allowEIO3=True  # Engine.IO 프로토콜 버전 3 허용
 )
 
@@ -107,13 +108,23 @@ else:
 # TCP 서버 시작
 tcp_handler.start()
 
+# 환경 제어 온도 스케줄러 초기화 및 시작
+env_temp_scheduler = EnvTempScheduler(tcp_handler)
+env_temp_scheduler.start()
+logger.info("환경 제어 온도 스케줄러 시작됨 - 10초마다 온도 설정 명령 전송")
+
+# API에 스케줄러 등록
+from api.env_api import register_temp_scheduler
+register_temp_scheduler(env_temp_scheduler)
+logger.info("API에 환경 제어 온도 스케줄러 등록됨")
+
 # 컨트롤러 초기화 함수
 def init_controllers():
     """모든 컨트롤러를 초기화하고 등록합니다."""
     controllers = {}
     
     # 분류기 컨트롤러 초기화
-    sort_controller = SortController(tcp_handler, socketio)
+    sort_controller = SortController(socketio, tcp_handler)
     controllers["sort"] = sort_controller
     register_controller("sort", sort_controller)
     
@@ -174,6 +185,7 @@ def internal_error(error):
 def shutdown():
     """서버 종료 시 정리 작업"""
     tcp_handler.stop()
+    env_temp_scheduler.stop()  # 온도 스케줄러 정지
     logger.info("==== 서버 종료 ====")
 
 if __name__ == '__main__':
