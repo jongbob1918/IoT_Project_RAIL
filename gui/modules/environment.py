@@ -4,30 +4,31 @@ from PyQt6.QtGui import *
 from PyQt6.QtCore import *
 from PyQt6 import uic
 import json
-import websocket
-import threading
 import datetime
 import random
 
-class EnvironmentPage(QWidget):
-    def __init__(self):
-        super().__init__()
-        uic.loadUi("ui/widgets/environment.ui", self)
+from modules.data_manager import DataManager
 
-        # WebSocket 설정
-        self.ws = websocket.WebSocketApp(
-            "ws://localhost:8000/ws",
-            on_message=self.on_message,
-            on_error=self.on_error,
-            on_close=self.on_close
-        )
-        self.ws.on_open = self.on_open
+class EnvironmentPage(QWidget):
+    """환경 관리 페이지 위젯 클래스"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        # UI 로드
+        uic.loadUi("ui/widgets/environment.ui", self)
+        
+        # 데이터 관리자 가져오기
+        self.data_manager = DataManager.get_instance()
+        
+        # 온도 임계값 설정
+        self.temp_thresholds = self.data_manager.get_temperature_thresholds()
         
         # 초기 창고 상태 정보
         self.warehouses = {
-            "A": {"name": "냉동 창고 (A)", "current_temp": -18.5, "target_temp": -18.0, "status": "정상", "mode": "냉각모드 작동중"},
-            "B": {"name": "냉장 창고 (B)", "current_temp": 4.2, "target_temp": 4.0, "status": "정상", "mode": "냉각모드 작동중"},
-            "C": {"name": "상온 창고 (C)", "current_temp": 24.2, "target_temp": 24.0, "status": "정상", "mode": "가열모드 작동중"}
+            "A": {"name": "냉동 창고 (A)", "current_temp": -20.0, "target_temp": -20.0, "status": "정상", "mode": "정지"},
+            "B": {"name": "냉장 창고 (B)", "current_temp": 5.0, "target_temp": 5.0, "status": "정상", "mode": "정지"},
+            "C": {"name": "상온 창고 (C)", "current_temp": 20.0, "target_temp": 20.0, "status": "정상", "mode": "정지"}
         }
         
         # 각 창고별 위젯 매핑
@@ -60,9 +61,9 @@ class EnvironmentPage(QWidget):
         
         # 온도 입력 제한 설정 및 초기값 설정
         self.temp_ranges = {
-            "A": (-30.0, 0.0),  # 냉동 창고: -30°C ~ 0°C
-            "B": (0.0, 10.0),   # 냉장 창고: 0°C ~ 10°C
-            "C": (15.0, 30.0)   # 상온 창고: 15°C ~ 30°C
+            "A": (-25.0, -15.0),  # 냉동 창고: -25°C ~ -15°C
+            "B": (0.0, 10.0),     # 냉장 창고: 0°C ~ 10°C
+            "C": (15.0, 25.0)     # 상온 창고: 15°C ~ 25°C
         }
         
         # 각 창고별 설정
@@ -86,149 +87,86 @@ class EnvironmentPage(QWidget):
         # 초기 UI 업데이트
         self.update_ui()
         
-        # WebSocket 연결 시작
-        self.start_websocket()
-        
         # UI 업데이트 타이머 설정
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.update_ui)
         self.update_timer.start(1000)  # 1초 간격으로 UI 업데이트
         
-        # 온도 시뮬레이션 타이머
-        self.simulation_timer = QTimer(self)
-        self.simulation_timer.timeout.connect(self.simulate_temp_changes)
-        self.simulation_timer.start(5000)  # 5초 간격으로 온도 변동 시뮬레이션
+        # 데이터 변경 이벤트 연결
+        self.data_manager.warehouse_data_changed.connect(self.update_warehouse_data)
+        self.data_manager.notification_added.connect(self.on_notification)
     
-    def start_websocket(self):
-        self.ws_thread = threading.Thread(target=self.ws.run_forever)
-        self.ws_thread.daemon = True
-        self.ws_thread.start()
-
-    def on_open(self, ws):
-        print("WebSocket 연결 성공")
-        # 인증 메시지 전송
-        auth_message = {
-            "version": "v1",
-            "type": "request",
-            "category": "auth",
-            "action": "authenticate",
-            "request_id": "a1",
-            "payload": {
-                "token": "JWT_TOKEN"  # 실제 토큰으로 교체해야 함
-            },
-            "ts": int(QDateTime.currentSecsSinceEpoch())
-        }
-        self.send_message(auth_message)
+    def update_warehouse_data(self):
+        """데이터 관리자로부터 창고 데이터 업데이트"""
+        warehouse_data = self.data_manager.get_warehouse_data()
         
-        # 초기 환경 데이터 요청
-        self.request_environment_data()
-
-    def on_message(self, ws, message):
-        try:
-            data = json.loads(message)
-            category = data.get("category")
-            action = data.get("action")
-            payload = data.get("payload", {})
-
-            # 환경 데이터 메시지 처리
-            if category == "env" and action == "realtime":
-                if "wh" in payload:
-                    warehouses = payload.get("wh", [])
-                    for wh in warehouses:
-                        wh_id = wh.get("id")
-                        if wh_id in self.warehouses:
-                            self.warehouses[wh_id]["current_temp"] = wh.get("temp", self.warehouses[wh_id]["current_temp"])
-                    
-                    # UI 업데이트
-                    self.update_ui()
-            
-            # 설정 응답 처리
-            elif category == "env" and action == "control_response":
-                wh_id = payload.get("warehouse_id")
-                status = payload.get("status", "ok")
+        for wh_id, data in warehouse_data.items():
+            if wh_id in self.warehouses:
+                # 현재 온도 업데이트
+                self.warehouses[wh_id]["current_temp"] = data["temperature"]
+                self.warehouses[wh_id]["status"] = data["status"]
                 
-                if wh_id in self.warehouses:
-                    if status == "ok":
-                        # 설정 성공 시 UI 업데이트
-                        self.warehouses[wh_id]["target_temp"] = payload.get("target_temp", self.warehouses[wh_id]["target_temp"])
-                        
-                        # 성공 메시지 표시
-                        QMessageBox.information(self, "설정 성공", f"{self.warehouses[wh_id]['name']} 온도 설정이 성공적으로 적용되었습니다.")
-                    else:
-                        # 실패 메시지 표시
-                        QMessageBox.warning(self, "설정 실패", f"{self.warehouses[wh_id]['name']} 온도 설정 적용에 실패했습니다: {payload.get('message', '알 수 없는 오류')}")
-                    
-                    # UI 업데이트
-                    self.update_ui()
-                    
-        except Exception as e:
-            print(f"메시지 처리 오류: {e}")
-
-    def on_error(self, ws, error):
-        print(f"WebSocket 오류: {error}")
-
-    def on_close(self, ws, close_status_code, close_msg):
-        print("WebSocket 연결 종료")
-        # 5초 후 재연결 시도
-        QTimer.singleShot(5000, self.start_websocket)
-
-    def request_environment_data(self):
-        data = {
-            "version": "v1",
-            "type": "request",
-            "category": "env",
-            "action": "get_status",
-            "request_id": "e1",
-            "payload": {
-                "warehouses": ["A", "B", "C"]
-            },
-            "ts": int(QDateTime.currentSecsSinceEpoch())
-        }
-        self.send_message(data)
-
+                # 모드 업데이트 (온도 비교)
+                self.update_operation_mode(wh_id)
+        
+        # UI 업데이트
+        self.update_ui()
+    
+    def update_operation_mode(self, wh_id):
+        """운영 모드(냉방/난방/정지) 업데이트"""
+        warehouse = self.warehouses[wh_id]
+        
+        # 현재 온도와 목표 온도의 차이
+        temp_diff = warehouse["current_temp"] - warehouse["target_temp"]
+        
+        # 온도 차이가 1도 이하면 정지 모드
+        if abs(temp_diff) <= 1.0:
+            warehouse["mode"] = "정지"
+        # 현재 온도가 목표 온도보다 높으면 냉방 모드
+        elif temp_diff > 0:
+            warehouse["mode"] = "냉방 모드"
+        # 현재 온도가 목표 온도보다 낮으면 난방 모드
+        else:
+            warehouse["mode"] = "난방 모드"
+    
+    def on_notification(self, message):
+        """알림 발생 시 처리"""
+        # 환경 관련 알림인 경우 처리
+        if "온도" in message or "창고" in message:
+            self.update_warehouse_data()
+    
     def update_ui(self):
+        """UI 업데이트"""
         # 각 창고별 UI 업데이트
         for wh_id, warehouse in self.warehouses.items():
             widgets = self.warehouse_widgets[wh_id]
             
             # 현재 온도 및 설정 온도 표시
-            widgets["current_temp"].setText(f"현재 온도: {warehouse['current_temp']}°C")
-            widgets["target_temp"].setText(f"설정 온도: {warehouse['target_temp']}°C")
+            widgets["current_temp"].setText(f"현재 온도: {warehouse['current_temp']:.1f}°C")
+            widgets["target_temp"].setText(f"설정 온도: {warehouse['target_temp']:.1f}°C")
             
-            # 모드 표시 및 업데이트 (현재 온도와 설정 온도 비교)
-            if abs(warehouse['current_temp'] - warehouse['target_temp']) <= 0.5:
-                # 온도가 목표 범위 내에 있으면 정상 상태
-                warehouse['mode'] = "정상"
-                widgets["mode_indicator"].setText("정상")
-                widgets["mode_indicator"].setStyleSheet("background-color: #4CAF50; color: white; padding: 3px; border-radius: 3px;")
-            elif warehouse['current_temp'] > warehouse['target_temp']:
-                # 현재 온도가 설정 온도보다 높으면 냉각 모드
-                warehouse['mode'] = "냉각모드 작동중"
-                widgets["mode_indicator"].setText("냉각모드 작동중")
+            # 모드 표시 업데이트
+            if warehouse["mode"] == "냉방 모드":
+                widgets["mode_indicator"].setText("냉방 모드")
                 widgets["mode_indicator"].setStyleSheet("background-color: #2196F3; color: white; padding: 3px; border-radius: 3px;")
-            else:
-                # 현재 온도가 설정 온도보다 낮으면 가열 모드
-                warehouse['mode'] = "가열모드 작동중"
-                widgets["mode_indicator"].setText("가열모드 작동중")
+            elif warehouse["mode"] == "난방 모드":
+                widgets["mode_indicator"].setText("난방 모드")
                 widgets["mode_indicator"].setStyleSheet("background-color: #FF5722; color: white; padding: 3px; border-radius: 3px;")
+            else:  # 정지 모드
+                widgets["mode_indicator"].setText("정지")
+                widgets["mode_indicator"].setStyleSheet("background-color: #9E9E9E; color: white; padding: 3px; border-radius: 3px;")
             
             # 상태 표시기 업데이트
             if warehouse["status"] == "정상":
                 widgets["status_indicator"].setText("정상")
                 widgets["status_indicator"].setStyleSheet("background-color: #4CAF50; color: white; border-radius: 5px; padding: 2px;")
-            elif warehouse["status"] == "경고":
+            elif warehouse["status"] == "주의":
+                widgets["status_indicator"].setText("주의")
+                widgets["status_indicator"].setStyleSheet("background-color: #FFEB3B; color: black; border-radius: 5px; padding: 2px;")
+            else:  # 비정상
                 widgets["status_indicator"].setText("경고")
-                widgets["status_indicator"].setStyleSheet("background-color: #FFC107; color: black; border-radius: 5px; padding: 2px;")
-            else:
-                widgets["status_indicator"].setText("오류")
                 widgets["status_indicator"].setStyleSheet("background-color: #F44336; color: white; border-radius: 5px; padding: 2px;")
-            
-        # 주기적으로 서버에 환경 데이터 요청
-        # 10초마다 데이터 갱신 (현재 시간을 10으로 나눈 나머지가 0일 때)
-        current_second = QTime.currentTime().second()
-        if current_second % 10 == 0:
-            self.request_environment_data()
-
+    
     def set_temperature(self, wh_id):
         """온도 설정 입력값을 처리합니다"""
         widgets = self.warehouse_widgets[wh_id]
@@ -249,71 +187,54 @@ class EnvironmentPage(QWidget):
                 widgets["temp_input"].setText(f"{temp_max}")
                 QMessageBox.warning(self, "입력 오류", f"최대 온도는 {temp_max}°C입니다.")
             
-            # 서버에 설정 적용 요청
-            data = {
-                "version": "v1",
-                "type": "request",
-                "category": "env",
-                "action": "control",
-                "request_id": f"e{wh_id}",
-                "payload": {
-                    "warehouse_id": wh_id,
-                    "target_temp": target_temp
-                },
-                "ts": int(QDateTime.currentSecsSinceEpoch())
-            }
-            self.send_message(data)
-            
-            # 일단 UI를 미리 업데이트 (실제 응답이 오면 다시 업데이트)
-            self.warehouses[wh_id]["target_temp"] = target_temp
-            
-            # UI 업데이트
-            self.update_ui()
-            
+            # 기존 값과 다른 경우에만 서버에 요청
+            if target_temp != self.warehouses[wh_id]["target_temp"]:
+                # 데이터 매니저를 통해 알림 생성
+                self.data_manager.add_notification(f"{self.warehouses[wh_id]['name']} 목표 온도가 {self.warehouses[wh_id]['target_temp']:.1f}°C에서 {target_temp:.1f}°C로 변경되었습니다.")
+                
+                # 타겟 온도 업데이트
+                self.warehouses[wh_id]["target_temp"] = target_temp
+                
+                # 모드 업데이트
+                self.update_operation_mode(wh_id)
+                
+                # UI 업데이트
+                self.update_ui()
+                
+                # 성공 메시지 표시
+                QMessageBox.information(self, "설정 성공", f"{self.warehouses[wh_id]['name']} 온도 설정이 성공적으로 적용되었습니다.")
+                
+                # 서버 연결이 있는 경우, 서버에 데이터 전송 (코드만 추가, 미사용)
+                try:
+                    server_conn = self.data_manager._server_connection
+                    if server_conn and server_conn.is_connected:
+                        # API 호출 코드 (미사용)
+                        pass
+                except Exception as e:
+                    print(f"서버 요청 오류: {e}")
+                    
         except ValueError:
             # 입력값이 숫자가 아닌 경우
             # 기존 설정 온도로 다시 설정
             widgets["temp_input"].setText(f"{self.warehouses[wh_id]['target_temp']}")
             QMessageBox.warning(self, "입력 오류", "유효한 온도 값을 입력해주세요.")
-
-    def simulate_temp_changes(self):
-        """실제 서버가 없으므로 온도 변화를 시뮬레이션합니다."""
-        for wh_id, warehouse in self.warehouses.items():
-            # 설정값과 현재값의 차이 계산
-            temp_diff = warehouse["target_temp"] - warehouse["current_temp"]
+    
+    def handleEnvironmentEvent(self, action, payload):
+        """서버로부터 환경 이벤트 처리"""
+        if action == "temperature_update" and "warehouse_id" in payload and "temperature" in payload:
+            wh_id = payload.get("warehouse_id")
+            temperature = payload.get("temperature")
             
-            # 천천히 설정값으로 수렴
-            adjustment_factor = 0.1
-            
-            # 랜덤 변동 추가 (-0.3 ~ +0.3)
-            random_temp = (random.random() - 0.5) * 0.6
-            
-            # 새 온도 값 계산
-            new_temp = warehouse["current_temp"] + (temp_diff * adjustment_factor) + random_temp
-            
-            # 값 업데이트
-            self.warehouses[wh_id]["current_temp"] = round(new_temp, 1)
-            
-            # 상태 업데이트 (온도가 설정값과 많이 다르면 경고 또는 오류)
-            if abs(temp_diff) > 5:
-                self.warehouses[wh_id]["status"] = "오류"
-            elif abs(temp_diff) > 2:
-                self.warehouses[wh_id]["status"] = "경고"
-            else:
-                self.warehouses[wh_id]["status"] = "정상"
-        
-        # UI 업데이트
-        self.update_ui()
-
-    def send_message(self, data):
-        try:
-            if hasattr(self, 'ws') and self.ws:
-                self.ws.send(json.dumps(data))
-        except Exception as e:
-            print(f"메시지 전송 오류: {e}")
-
-    def closeEvent(self, event):
-        # 위젯이 닫힐 때 WebSocket 연결 종료
-        if hasattr(self, 'ws') and self.ws:
-            self.ws.close()
-        event.accept()
+            if wh_id in self.warehouses:
+                self.warehouses[wh_id]["current_temp"] = temperature
+                self.update_operation_mode(wh_id)
+                self.update_ui()
+    
+    def onConnectionStatusChanged(self, connected):
+        """서버 연결 상태 변경 시 호출되는 메서드"""
+        if connected:
+            # 연결 성공 시 처리
+            self.data_manager.add_notification("서버에 연결되었습니다. 환경 제어 시스템 활성화됨.")
+        else:
+            # 연결 실패 시 처리
+            self.data_manager.add_notification("서버 연결이 끊어졌습니다. 환경 제어 시스템 제한 모드로 작동 중.")

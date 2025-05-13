@@ -23,7 +23,7 @@
     </rect>
    </property>
    <property name="text">
-    <string>컨베이어 벨트 상태 및 제어</string>
+    <string>컨베이어 벨트 상태</string>
    </property>
   </widget>
   <widget class="QLabel" name="label_2">
@@ -81,7 +81,7 @@
     <property name="geometry">
      <rect>
       <x>110</x>
-      <y>100</y>
+      <y>70</y>
       <width>41</width>
       <height>18</height>
      </rect>
@@ -97,7 +97,7 @@
     <property name="geometry">
      <rect>
       <x>20</x>
-      <y>100</y>
+      <y>70</y>
       <width>71</width>
       <height>18</height>
      </rect>
@@ -106,38 +106,12 @@
      <string>대기 물품:</string>
     </property>
    </widget>
-   <widget class="QPushButton" name="btn_stop">
-    <property name="geometry">
-     <rect>
-      <x>130</x>
-      <y>10</y>
-      <width>91</width>
-      <height>26</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>일시정지</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="btn_start">
-    <property name="geometry">
-     <rect>
-      <x>20</x>
-      <y>10</y>
-      <width>101</width>
-      <height>26</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>가동</string>
-    </property>
-   </widget>
    <widget class="QLabel" name="conveyor_status">
     <property name="geometry">
      <rect>
       <x>70</x>
-      <y>60</y>
-      <width>61</width>
+      <y>30</y>
+      <width>91</width>
       <height>18</height>
      </rect>
     </property>
@@ -152,35 +126,13 @@
     <property name="geometry">
      <rect>
       <x>20</x>
-      <y>60</y>
+      <y>30</y>
       <width>41</width>
       <height>18</height>
      </rect>
     </property>
     <property name="text">
      <string>상태:</string>
-    </property>
-   </widget>
-   <widget class="QPushButton" name="btn_emergencyStop">
-    <property name="geometry">
-     <rect>
-      <x>230</x>
-      <y>10</y>
-      <width>101</width>
-      <height>26</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>비상정지</string>
-    </property>
-    <property name="autoDefault">
-     <bool>false</bool>
-    </property>
-    <property name="default">
-     <bool>false</bool>
-    </property>
-    <property name="flat">
-     <bool>false</bool>
     </property>
    </widget>
   </widget>
@@ -218,7 +170,7 @@
    <widget class="QLabel" name="label_6">
     <property name="geometry">
      <rect>
-      <x>210</x>
+      <x>290</x>
       <y>90</y>
       <width>81</width>
       <height>18</height>
@@ -226,7 +178,8 @@
     </property>
     <property name="font">
      <font>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -239,7 +192,7 @@
    <widget class="QLabel" name="inventory_A">
     <property name="geometry">
      <rect>
-      <x>70</x>
+      <x>150</x>
       <y>120</y>
       <width>41</width>
       <height>18</height>
@@ -271,23 +224,7 @@
    <widget class="QLabel" name="inventory_B">
     <property name="geometry">
      <rect>
-      <x>230</x>
-      <y>120</y>
-      <width>41</width>
-      <height>18</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>0개</string>
-    </property>
-    <property name="alignment">
-     <set>Qt::AlignCenter</set>
-    </property>
-   </widget>
-   <widget class="QLabel" name="inventory_D">
-    <property name="geometry">
-     <rect>
-      <x>560</x>
+      <x>310</x>
       <y>120</y>
       <width>41</width>
       <height>18</height>
@@ -377,7 +314,7 @@ border-radius: 15px;</string>
     <widget class="QLabel" name="sorter_A">
      <property name="geometry">
       <rect>
-       <x>158</x>
+       <x>202</x>
        <y>0</y>
        <width>20</width>
        <height>15</height>
@@ -394,7 +331,7 @@ border-radius: 0px;</string>
     <widget class="QLabel" name="sorter_B">
      <property name="geometry">
       <rect>
-       <x>316</x>
+       <x>360</x>
        <y>0</y>
        <width>20</width>
        <height>15</height>
@@ -411,7 +348,7 @@ border-radius: 0px;</string>
     <widget class="QLabel" name="sorter_C">
      <property name="geometry">
       <rect>
-       <x>474</x>
+       <x>518</x>
        <y>0</y>
        <width>20</width>
        <height>15</height>
@@ -425,17 +362,51 @@ border-radius: 0px;</string>
       <string/>
      </property>
     </widget>
-    <widget class="QLabel" name="sorter_D">
+    <widget class="QLabel" name="sorter_A_2">
      <property name="geometry">
       <rect>
-       <x>632</x>
+       <x>131</x>
        <y>0</y>
-       <width>20</width>
-       <height>15</height>
+       <width>71</width>
+       <height>5</height>
       </rect>
      </property>
      <property name="styleSheet">
-      <string notr="true">background-color: rgb(0, 128, 255);
+      <string notr="true">background-color: rgb(0, 0, 255);
+border-radius: 0px;</string>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+    </widget>
+    <widget class="QLabel" name="sorter_A_3">
+     <property name="geometry">
+      <rect>
+       <x>290</x>
+       <y>0</y>
+       <width>71</width>
+       <height>5</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: rgb(0, 0, 255);
+border-radius: 0px;</string>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+    </widget>
+    <widget class="QLabel" name="sorter_A_4">
+     <property name="geometry">
+      <rect>
+       <x>448</x>
+       <y>0</y>
+       <width>71</width>
+       <height>5</height>
+      </rect>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">background-color: rgb(0, 0, 255);
 border-radius: 0px;</string>
      </property>
      <property name="text">
@@ -446,14 +417,16 @@ border-radius: 0px;</string>
     <zorder>sorter_A</zorder>
     <zorder>sorter_B</zorder>
     <zorder>sorter_C</zorder>
-    <zorder>sorter_D</zorder>
     <zorder>roller_right</zorder>
     <zorder>roller_left</zorder>
+    <zorder>sorter_A_2</zorder>
+    <zorder>sorter_A_3</zorder>
+    <zorder>sorter_A_4</zorder>
    </widget>
    <widget class="QLabel" name="label_7">
     <property name="geometry">
      <rect>
-      <x>380</x>
+      <x>460</x>
       <y>90</y>
       <width>81</width>
       <height>18</height>
@@ -461,7 +434,8 @@ border-radius: 0px;</string>
     </property>
     <property name="font">
      <font>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -474,7 +448,7 @@ border-radius: 0px;</string>
    <widget class="QLabel" name="label_5">
     <property name="geometry">
      <rect>
-      <x>50</x>
+      <x>130</x>
       <y>90</y>
       <width>81</width>
       <height>18</height>
@@ -482,7 +456,8 @@ border-radius: 0px;</string>
     </property>
     <property name="font">
      <font>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -495,7 +470,7 @@ border-radius: 0px;</string>
    <widget class="QLabel" name="inventory_C">
     <property name="geometry">
      <rect>
-      <x>400</x>
+      <x>480</x>
       <y>120</y>
       <width>41</width>
       <height>18</height>
@@ -503,27 +478,6 @@ border-radius: 0px;</string>
     </property>
     <property name="text">
      <string>0개</string>
-    </property>
-    <property name="alignment">
-     <set>Qt::AlignCenter</set>
-    </property>
-   </widget>
-   <widget class="QLabel" name="label_8">
-    <property name="geometry">
-     <rect>
-      <x>540</x>
-      <y>90</y>
-      <width>81</width>
-      <height>18</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <bold>true</bold>
-     </font>
-    </property>
-    <property name="text">
-     <string>분류박스 D</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
@@ -540,7 +494,8 @@ border-radius: 0px;</string>
     </property>
     <property name="font">
      <font>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">

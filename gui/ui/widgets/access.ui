@@ -43,24 +43,6 @@
       <property name="frameShadow">
        <enum>QFrame::Raised</enum>
       </property>
-      <widget class="QLabel" name="label_2">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>10</y>
-         <width>141</width>
-         <height>16</height>
-        </rect>
-       </property>
-       <property name="font">
-        <font>
-         <bold>true</bold>
-        </font>
-       </property>
-       <property name="text">
-        <string>실시간 출입자 상황</string>
-       </property>
-      </widget>
       <widget class="QLabel" name="label_3">
        <property name="geometry">
         <rect>
@@ -84,7 +66,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>32명</string>
+        <string>0명</string>
        </property>
       </widget>
       <widget class="QLabel" name="label_5">
@@ -110,7 +92,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>15명</string>
+        <string>0명</string>
        </property>
       </widget>
       <widget class="QLabel" name="label_7">
@@ -136,7 +118,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>17명</string>
+        <string>0명</string>
        </property>
       </widget>
       <widget class="QLabel" name="label_9">
@@ -157,7 +139,7 @@
         <rect>
          <x>90</x>
          <y>80</y>
-         <width>151</width>
+         <width>181</width>
          <height>22</height>
         </rect>
        </property>
@@ -270,6 +252,25 @@
          <string>사무실</string>
         </property>
        </item>
+      </widget>
+      <widget class="QLabel" name="label_4">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>10</y>
+         <width>141</width>
+         <height>21</height>
+        </rect>
+       </property>
+       <property name="font">
+        <font>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>실시간 출입자 상황</string>
+       </property>
       </widget>
      </widget>
     </item>

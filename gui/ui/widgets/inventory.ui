@@ -28,11 +28,12 @@
    <property name="font">
     <font>
      <pointsize>14</pointsize>
-     <bold>true</bold>
+     <weight>50</weight>
+     <bold>false</bold>
     </font>
    </property>
    <property name="text">
-    <string>재고 관리</string>
+    <string>입고 물품 현황</string>
    </property>
   </widget>
   <widget class="QFrame" name="chartFrame">
@@ -78,7 +79,8 @@
     <property name="font">
      <font>
       <pointsize>12</pointsize>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -97,7 +99,8 @@
     <property name="font">
      <font>
       <pointsize>10</pointsize>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -161,7 +164,8 @@ QProgressBar::chunk {
     <property name="font">
      <font>
       <pointsize>10</pointsize>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -225,7 +229,8 @@ QProgressBar::chunk {
     <property name="font">
      <font>
       <pointsize>10</pointsize>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -277,70 +282,6 @@ QProgressBar::chunk {
      <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
     </property>
    </widget>
-   <widget class="QLabel" name="label_warehouse_d">
-    <property name="geometry">
-     <rect>
-      <x>10</x>
-      <y>210</y>
-      <width>81</width>
-      <height>21</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <pointsize>10</pointsize>
-      <bold>true</bold>
-     </font>
-    </property>
-    <property name="text">
-     <string>창고 D:</string>
-    </property>
-   </widget>
-   <widget class="QProgressBar" name="progressBar_D">
-    <property name="geometry">
-     <rect>
-      <x>90</x>
-      <y>210</y>
-      <width>201</width>
-      <height>23</height>
-     </rect>
-    </property>
-    <property name="styleSheet">
-     <string notr="true">QProgressBar {
-    border: 1px solid grey;
-    border-radius: 3px;
-    text-align: center;
-}
-
-QProgressBar::chunk {
-    background-color: #DB4437;
-}</string>
-    </property>
-    <property name="value">
-     <number>75</number>
-    </property>
-   </widget>
-   <widget class="QLabel" name="label_d_count">
-    <property name="geometry">
-     <rect>
-      <x>300</x>
-      <y>210</y>
-      <width>91</width>
-      <height>21</height>
-     </rect>
-    </property>
-    <property name="font">
-     <font>
-      <pointsize>10</pointsize>
-     </font>
-    </property>
-    <property name="text">
-     <string>50개 (25%)</string>
-    </property>
-    <property name="alignment">
-     <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-    </property>
-   </widget>
    <widget class="QLabel" name="label_total">
     <property name="geometry">
      <rect>
@@ -353,7 +294,8 @@ QProgressBar::chunk {
     <property name="font">
      <font>
       <pointsize>11</pointsize>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -372,7 +314,8 @@ QProgressBar::chunk {
     <property name="font">
      <font>
       <pointsize>11</pointsize>
-      <bold>true</bold>
+      <weight>50</weight>
+      <bold>false</bold>
      </font>
     </property>
     <property name="text">
@@ -383,16 +326,17 @@ QProgressBar::chunk {
   <widget class="QPushButton" name="btn_inventory_list">
    <property name="geometry">
     <rect>
-     <x>360</x>
+     <x>350</x>
      <y>570</y>
-     <width>141</width>
+     <width>161</width>
      <height>41</height>
     </rect>
    </property>
    <property name="font">
     <font>
-     <pointsize>10</pointsize>
-     <bold>true</bold>
+     <pointsize>12</pointsize>
+     <weight>50</weight>
+     <bold>false</bold>
     </font>
    </property>
    <property name="styleSheet">
