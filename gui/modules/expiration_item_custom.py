@@ -1,7 +1,10 @@
 from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtCore import Qt, QDate
-import random
+import logging
+
+# 로깅 설정
+logger = logging.getLogger(__name__)
 
 class ExpirationItemCustom(QWidget):
     """유통기한 아이템 커스텀 위젯 클래스"""
@@ -67,7 +70,10 @@ class ExpirationItemCustom(QWidget):
                     exp_label.setText(f"유통기한: D{days_diff} (임박)")
                     exp_label.setStyleSheet("color: #FFC107;")  # 노란색
             except Exception as e:
+                logger.error(f"유통기한 날짜 처리 오류: {str(e)}")
                 exp_label.setText(f"유통기한: {exp_date_str}")
+        else:
+            exp_label.setText("유통기한: 정보 없음")
         
         # 수량
         count_label = QLabel(f"수량: {self.product_data.get('quantity', 0)}개")
@@ -85,3 +91,5 @@ class ExpirationItemCustom(QWidget):
         main_layout.addLayout(info_layout)
         
         self.setLayout(main_layout)
+        
+        logger.debug(f"유통기한 아이템 위젯 생성 완료: {self.product_data.get('name', '')}")
