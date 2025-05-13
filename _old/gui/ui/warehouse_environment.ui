@@ -1,0 +1,549 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>WarehouseEnvironment</class>
+ <widget class="QWidget" name="WarehouseEnvironment">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>풀필먼트 시스템 - 창고 환경 관리</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="headerLayout">
+     <item>
+      <widget class="QLabel" name="titleLabel">
+       <property name="font">
+        <font>
+         <pointsize>12</pointsize>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>풀필먼트 시스템 > 창고 환경 관리</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="adminLabel">
+       <property name="text">
+        <string>관리자: 홍길동</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QFrame" name="mainFrame">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="QListWidget" name="menuList">
+        <property name="maximumSize">
+         <size>
+          <width>150</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="currentRow">
+         <number>2</number>
+        </property>
+        <item>
+         <property name="text">
+          <string>대시보드</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>장치 관리</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>창고 환경</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>재고 관리</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>유통기한 관리</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>입출입 관리</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item>
+       <layout class="QVBoxLayout" name="contentLayout">
+        <item>
+         <layout class="QGridLayout" name="warehouseGrid">
+          <item row="0" column="0">
+           <widget class="QGroupBox" name="warehouseA">
+            <property name="title">
+             <string>냉동 창고 (A)</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_2">
+             <item>
+              <layout class="QFormLayout" name="formLayout">
+               <item row="0" column="0">
+                <widget class="QLabel" name="currentTempLabelA">
+                 <property name="text">
+                  <string>현재 온도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QLabel" name="currentTempValueA">
+                 <property name="text">
+                  <string>-18.5℃</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="setTempLabelA">
+                 <property name="text">
+                  <string>설정 온도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QLabel" name="setTempValueA">
+                 <property name="text">
+                  <string>-18.0℃</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="fanStatusLabelA">
+                 <property name="text">
+                  <string>팬 상태:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QLabel" name="fanStatusValueA">
+                 <property name="text">
+                  <string>자동</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="0">
+                <widget class="QLabel" name="operationModeLabelA">
+                 <property name="text">
+                  <string>동작 모드:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QLabel" name="operationModeValueA">
+                 <property name="text">
+                  <string>냉방</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="statusLabelA">
+                 <property name="text">
+                  <string>상태:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QLabel" name="statusValueA">
+                 <property name="styleSheet">
+                  <string notr="true">color: green;</string>
+                 </property>
+                 <property name="text">
+                  <string>● 정상</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QGroupBox" name="warehouseB">
+            <property name="title">
+             <string>냉장 창고 (B)</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_3">
+             <item>
+              <layout class="QFormLayout" name="formLayout_2">
+               <item row="0" column="0">
+                <widget class="QLabel" name="currentTempLabelB">
+                 <property name="text">
+                  <string>현재 온도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QLabel" name="currentTempValueB">
+                 <property name="text">
+                  <string>4.2℃</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="setTempLabelB">
+                 <property name="text">
+                  <string>설정 온도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QLabel" name="setTempValueB">
+                 <property name="text">
+                  <string>4.0℃</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="fanStatusLabelB">
+                 <property name="text">
+                  <string>팬 상태:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QLabel" name="fanStatusValueB">
+                 <property name="text">
+                  <string>자동</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="0">
+                <widget class="QLabel" name="operationModeLabelB">
+                 <property name="text">
+                  <string>동작 모드:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QLabel" name="operationModeValueB">
+                 <property name="text">
+                  <string>냉방</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="statusLabelB">
+                 <property name="text">
+                  <string>상태:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QLabel" name="statusValueB">
+                 <property name="styleSheet">
+                  <string notr="true">color: green;</string>
+                 </property>
+                 <property name="text">
+                  <string>● 정상</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QGroupBox" name="warehouseC">
+            <property name="title">
+             <string>상온 창고 (C)</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_4">
+             <item>
+              <layout class="QFormLayout" name="formLayout_3">
+               <item row="0" column="0">
+                <widget class="QLabel" name="currentTempLabelC">
+                 <property name="text">
+                  <string>현재 온도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QLabel" name="currentTempValueC">
+                 <property name="text">
+                  <string>24.2℃</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="setTempLabelC">
+                 <property name="text">
+                  <string>설정 온도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QLabel" name="setTempValueC">
+                 <property name="text">
+                  <string>24.0℃</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="currentHumidLabelC">
+                 <property name="text">
+                  <string>현재 습도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QLabel" name="currentHumidValueC">
+                 <property name="text">
+                  <string>55%</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="0">
+                <widget class="QLabel" name="setHumidLabelC">
+                 <property name="text">
+                  <string>설정 습도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QLabel" name="setHumidValueC">
+                 <property name="text">
+                  <string>50%</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="fanStatusLabelC">
+                 <property name="text">
+                  <string>팬 상태:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QLabel" name="fanStatusValueC">
+                 <property name="text">
+                  <string>자동</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="0">
+                <widget class="QLabel" name="operationModeLabelC">
+                 <property name="text">
+                  <string>동작 모드:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="1">
+                <widget class="QLabel" name="operationModeValueC">
+                 <property name="text">
+                  <string>꺼짐</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="6" column="0">
+                <widget class="QLabel" name="dehumidLabelC">
+                 <property name="text">
+                  <string>제습기:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="6" column="1">
+                <widget class="QLabel" name="dehumidValueC">
+                 <property name="text">
+                  <string>켜짐</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="0">
+                <widget class="QLabel" name="statusLabelC">
+                 <property name="text">
+                  <string>상태:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="1">
+                <widget class="QLabel" name="statusValueC">
+                 <property name="styleSheet">
+                  <string notr="true">color: green;</string>
+                 </property>
+                 <property name="text">
+                  <string>● 정상</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QGroupBox" name="warehouseD">
+            <property name="title">
+             <string>비식품 창고 (D)</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_5">
+             <item>
+              <layout class="QFormLayout" name="formLayout_4">
+               <item row="0" column="0">
+                <widget class="QLabel" name="currentTempLabelD">
+                 <property name="text">
+                  <string>현재 온도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QLabel" name="currentTempValueD">
+                 <property name="text">
+                  <string>23.8℃</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="setTempLabelD">
+                 <property name="text">
+                  <string>설정 온도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QLabel" name="setTempValueD">
+                 <property name="text">
+                  <string>23.0℃</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="currentHumidLabelD">
+                 <property name="text">
+                  <string>현재 습도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QLabel" name="currentHumidValueD">
+                 <property name="text">
+                  <string>52%</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="0">
+                <widget class="QLabel" name="setHumidLabelD">
+                 <property name="text">
+                  <string>설정 습도:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QLabel" name="setHumidValueD">
+                 <property name="text">
+                  <string>55%</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="0">
+                <widget class="QLabel" name="fanStatusLabelD">
+                 <property name="text">
+                  <string>팬 상태:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="4" column="1">
+                <widget class="QLabel" name="fanStatusValueD">
+                 <property name="text">
+                  <string>자동</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="0">
+                <widget class="QLabel" name="operationModeLabelD">
+                 <property name="text">
+                  <string>동작 모드:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="1">
+                <widget class="QLabel" name="operationModeValueD">
+                 <property name="text">
+                  <string>꺼짐</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="6" column="0">
+                <widget class="QLabel" name="dehumidLabelD">
+                 <property name="text">
+                  <string>제습기:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="6" column="1">
+                <widget class="QLabel" name="dehumidValueD">
+                 <property name="text">
+                  <string>꺼짐</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="0">
+                <widget class="QLabel" name="statusLabelD">
+                 <property name="text">
+                  <string>상태:</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="7" column="1">
+                <widget class="QLabel" name="statusValueD">
+                 <property name="styleSheet">
+                  <string notr="true">color: green;</string>
+                 </property>
+                 <property name="text">
+                  <string>● 정상</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

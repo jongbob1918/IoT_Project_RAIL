@@ -1,0 +1,33 @@
+# Flask
+Flask==2.3.3
+Werkzeug==2.3.7
+Jinja2==3.1.2
+itsdangerous==2.1.2
+flask-cors==4.0.0
+flask-socketio==5.3.5
+# database
+PyMySQL==1.1.0
+SQLAlchemy==2.0.23
+mysql-connector-python==8.2.0
+
+# logging
+python-dotenv==1.0.0
+loguru==0.7.2
+requests==2.31.0
+
+# GUI
+PyQt6==6.6.0
+PyQt6-Qt6==6.6.0
+PyQt6-sip==13.6.0
+numpy==1.26.0
+matplotlib==3.8.0
+koreanize-matplotlib==0.1.1
+setuptools>=65.5.0
+websocket-client>=1.5.0
+
+# test
+pytest==7.4.2
+black==23.9.1
+
+# system monitoring
+psutil==5.9.6

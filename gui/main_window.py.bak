@@ -1,0 +1,130 @@
+import sys
+from PySide6.QtWidgets import *
+from PySide6.QtGui import *
+from PySide6.QtCore import *
+from PySide6 import QtUiTools
+import numpy as np
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import koreanize_matplotlib
+
+from modules.dashboard import DashboardPage
+from modules.devices import DevicesPage
+
+class WindowClass(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        
+        # UI 파일 로드하는 방식 변경
+        loader = QtUiTools.QUiLoader()
+        ui_file = QFile("ui/main_window.ui")
+        ui_file.open(QFile.ReadOnly)
+        self.ui = loader.load(ui_file, self)
+        ui_file.close()
+        
+        # UI 요소 참조
+        self.stackedWidget = self.ui.findChild(QStackedWidget, "stackedWidget")
+        self.sidebarWidget = self.ui.findChild(QWidget, "sidebarWidget")
+        self.btn_dashboard = self.ui.findChild(QPushButton, "btn_dashboard")
+        self.btn_inventory = self.ui.findChild(QPushButton, "btn_inventory")
+        self.btn_expiration = self.ui.findChild(QPushButton, "btn_expiration")
+        self.btn_devices = self.ui.findChild(QPushButton, "btn_devices")
+        self.btn_access = self.ui.findChild(QPushButton, "btn_access")
+        
+        self.setWindowTitle("물류 관리 시스템")
+
+        # 개별 페이지 UI 파일 로드
+        self.page_dashboard = DashboardPage()
+        
+        # inventory.ui 로드
+        inventory_file = QFile("ui/widgets/inventory.ui")
+        inventory_file.open(QFile.ReadOnly)
+        self.page_inventory = loader.load(inventory_file)
+        inventory_file.close()
+        
+        # expiration.ui 로드
+        expiration_file = QFile("ui/widgets/expiration.ui") 
+        expiration_file.open(QFile.ReadOnly)
+        self.page_expiration = loader.load(expiration_file)
+        expiration_file.close()
+        
+        # Devices 페이지 로드
+        self.page_devices = DevicesPage()
+        
+        # access.ui 로드
+        access_file = QFile("ui/widgets/access.ui")
+        access_file.open(QFile.ReadOnly)
+        self.page_access = loader.load(access_file)
+        access_file.close()
+        
+        # stackedWidget에 페이지 추가
+        self.stackedWidget.addWidget(self.page_dashboard)
+        self.stackedWidget.addWidget(self.page_inventory)
+        self.stackedWidget.addWidget(self.page_expiration)
+        self.stackedWidget.addWidget(self.page_devices)
+        self.stackedWidget.addWidget(self.page_access)
+
+        # 대시보드 스타일 설정
+        self.stackedWidget.setStyleSheet("background-color: #ffffff;")
+        
+        # 사이드바 스타일 설정
+        self.sidebarWidget.setStyleSheet("background-color: #2c2c2c;")
+
+        # 사이드바 버튼 리스트
+        self.buttons = [self.btn_dashboard, self.btn_inventory, self.btn_expiration, self.btn_devices, self.btn_access]
+
+        # 사이드바 버튼 기본 스타일 설정
+        for btn in self.buttons:
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #2c2c2c;
+                    color: #eeeeee;
+                    border: none;
+                    border-radius: 0px;
+                    font-size: 14px;
+                }
+           
+            """)
+
+        # 사이드바 버튼 클릭 이벤트 연결
+        self.btn_dashboard.clicked.connect(lambda: self.activate_button(self.btn_dashboard, self.page_dashboard))
+        self.btn_inventory.clicked.connect(lambda: self.activate_button(self.btn_inventory, self.page_inventory))
+        self.btn_expiration.clicked.connect(lambda: self.activate_button(self.btn_expiration, self.page_expiration))
+        self.btn_devices.clicked.connect(lambda: self.activate_button(self.btn_devices, self.page_devices))
+        self.btn_access.clicked.connect(lambda: self.activate_button(self.btn_access, self.page_access))
+
+        # 초기 페이지 설정
+        self.stackedWidget.setCurrentWidget(self.page_dashboard)
+        self.activate_button(self.btn_dashboard, self.page_dashboard)
+
+    # 사이드바 버튼 클릭 시 배경 활성화
+    def activate_button(self, clicked_button, target_page):
+        self.stackedWidget.setCurrentWidget(target_page)
+
+        for btn in self.buttons:
+            if btn == clicked_button:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #4285F4;
+                        color: #ffffff;
+                        border: none;
+                        border-radius: 0px;
+                        font-size: 14px;
+                    }
+                """)
+            else:
+                btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #2c2c2c;
+                        color: #eaeaea;
+                        border: none;
+                        border-radius: 0px;
+                        font-size: 14px;
+                    }
+                """)
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    win = WindowClass()
+    win.show()
+    sys.exit(app.exec())

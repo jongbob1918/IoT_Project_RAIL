@@ -1,0 +1,8 @@
+# 통신 관련 패키지
+websockets==12.0
+
+# 로깅
+loguru==0.7.2
+
+# 설정 관리
+python-dotenv==1.0.0 

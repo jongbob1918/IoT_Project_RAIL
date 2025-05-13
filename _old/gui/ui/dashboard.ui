@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Dashboard</class>
+ <widget class="QWidget" name="Dashboard">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>풀필먼트 시스템 - 대시보드</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <layout class="QHBoxLayout" name="headerLayout">
+     <item>
+      <widget class="QLabel" name="titleLabel">
+       <property name="font">
+        <font>
+         <pointsize>12</pointsize>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>풀필먼트 시스템</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="adminLabel">
+       <property name="text">
+        <string>관리자: 홍길동</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QFrame" name="mainFrame">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout">
+      <item>
+       <widget class="QListWidget" name="menuList">
+        <property name="maximumSize">
+         <size>
+          <width>150</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="currentRow">
+         <number>0</number>
+        </property>
+        <item>
+         <property name="text">
+          <string>대시보드</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>장치 관리</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>창고 환경</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>재고 관리</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>유통기한 관리</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>입출입 관리</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item>
+       <layout class="QVBoxLayout" name="contentLayout">
+        <item>
+         <layout class="QHBoxLayout" name="topRowLayout">
+          <item>
+           <widget class="QGroupBox" name="inOutGroupBox">
+            <property name="title">
+             <string>실시간 입출고 현황</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_2">
+             <item>
+              <layout class="QHBoxLayout" name="inboundLayout">
+               <item>
+                <widget class="QLabel" name="inboundLabel">
+                 <property name="text">
+                  <string>오늘 총 입고:</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="inboundValue">
+                 <property name="text">
+                  <string>78개</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="outboundLayout">
+               <item>
+                <widget class="QLabel" name="outboundLabel">
+                 <property name="text">
+                  <string>오늘 총 출고:</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="outboundValue">
+                 <property name="text">
+                  <string>52개</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="personnelLayout">
+               <item>
+                <widget class="QLabel" name="personnelLabel">
+                 <property name="text">
+                  <string>현재 인원:</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="personnelValue">
+                 <property name="text">
+                  <string>26명</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <spacer name="verticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="storageGroupBox">
+            <property name="title">
+             <string>창고별 적재율</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_3">
+             <item>
+              <widget class="QLabel" name="chartPlaceholder">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>100</height>
+                </size>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">background-color: #f0f0f0; border: 1px dashed #aaa;</string>
+               </property>
+               <property name="text">
+                <string>[원형 차트]</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="storageA">
+               <property name="text">
+                <string>- 창고A: 56%</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="storageB">
+               <property name="text">
+                <string>- 창고B: 63%</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="storageC">
+               <property name="text">
+                <string>- 창고C: 42%</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="storageD">
+               <property name="text">
+                <string>- 창고D: 87%</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="bottomRowLayout">
+          <item>
+           <widget class="QGroupBox" name="temperatureGroupBox">
+            <property name="title">
+             <string>창고별 온습도 상태</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_4">
+             <item>
+              <widget class="QLabel" name="storageAStatus">
+               <property name="text">
+                <string>● 창고A: 정상</string>
+               </property>
+               <property name="textFormat">
+                <enum>Qt::RichText</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="storageBStatus">
+               <property name="text">
+                <string>● 창고B: 정상</string>
+               </property>
+               <property name="textFormat">
+                <enum>Qt::RichText</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="storageCStatus">
+               <property name="text">
+                <string>▲ 창고C: 경고</string>
+               </property>
+               <property name="textFormat">
+                <enum>Qt::RichText</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="storageDStatus">
+               <property name="text">
+                <string>● 창고D: 정상</string>
+               </property>
+               <property name="textFormat">
+                <enum>Qt::RichText</enum>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="verticalSpacer_2">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="alertGroupBox">
+            <property name="title">
+             <string>최근 알림</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_5">
+             <item>
+              <widget class="QLabel" name="alert1">
+               <property name="text">
+                <string>15:22:25 벨트 속도 변동</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="alert2">
+               <property name="text">
+                <string>15:15:37 분류박스A 적재량 80%</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="alert3">
+               <property name="text">
+                <string>14:56:05 분류기 3 분류 오류</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="alert4">
+               <property name="text">
+                <string>14:30:22 냉장 창고 온도 이상</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="alert5">
+               <property name="text">
+                <string>13:45:18 유통기한 경과 물품 3개</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="verticalSpacer_3">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
