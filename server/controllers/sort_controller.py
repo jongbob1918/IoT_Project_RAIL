@@ -232,34 +232,63 @@ class SortController:
         finally:
             self.processing_barcode = False
     
-    def _handle_sort_complete(self, payload):
-        """분류 완료 이벤트 처리"""
-        # 분류 구역 추출 (ssA에서 A)
-        zone = payload[2] if len(payload) > 2 else None
-        
-        if not zone:
-            logger.warning("분류 구역 정보 없음")
+    def _handle_barcode(self, payload):
+        """바코드 이벤트 처리"""
+        # 처리 중 표시
+        if self.processing_barcode:
+            logger.warning("이미 처리 중인 바코드가 있음")
             return
             
-        logger.info(f"분류 완료: {zone} 구역")
+        self.processing_barcode = True
         
-        # 대기 물품 수 감소
-        if self.items_waiting > 0:
-            self.items_waiting -= 1
-        
-        # 처리 물품 수 증가
-        self.items_processed += 1
-        
-        # 구역별 카운트 증가
-        if zone in self.sort_counts:
-            self.sort_counts[zone] += 1
-        
-        # 상태 업데이트 이벤트 발송
-        self._emit_status_update()
-        
-        # 대기 물품이 없으면 자동 정지 타이머 시작
-        if self.items_waiting == 0:
-            self._reset_auto_stop_timer()
+        try:
+            # 바코드 데이터 추출 (bc 이후의 문자열)
+            barcode_data = payload[2:] if len(payload) > 2 else ""
+            
+            if not barcode_data:
+                logger.warning("바코드 데이터 없음")
+                self._send_sort_command("E")  # 오류 분류
+                return
+            
+            # 바코드 파싱
+            item_info = parse_barcode(barcode_data)
+            
+            if not item_info:
+                logger.error(f"바코드 파싱 실패: {barcode_data}")
+                self._send_sort_command("E")  # 오류 분류
+                return
+            
+            # 타임스탬프 추가
+            item_info["timestamp"] = time.time()
+            
+            # 여기서 선반 할당 코드 제거 (있었다면)
+            
+            # 분류 명령 전송
+            self._send_sort_command(item_info["category"])
+            
+            # 로그에 추가
+            self._add_sort_log(item_info)
+            
+            # 바코드 인식 이벤트 발송
+            self.socketio.emit('barcode_scanned', item_info, namespace="/ws")
+            
+            # 표준 형식 이벤트도 추가로 발송
+            self._emit_standardized_event("sorter", "barcode_scanned", item_info)
+            
+            # DB에 바코드 스캔 로그만 저장 (선반 할당 없이)
+            if hasattr(self, 'db_helper') and self.db_helper:
+                self.db_helper.insert_barcode_scan(
+                    item_info["barcode"], 
+                    item_info["category"],
+                    item_info.get("item_code"),
+                    item_info.get("expiry_date")
+                )
+            
+        except Exception as e:
+            logger.error(f"바코드 처리 오류: {str(e)}")
+            self._send_sort_command("E")  # 오류 분류
+        finally:
+            self.processing_barcode = False
     
     def _send_sort_command(self, zone):
         """분류 명령 전송"""
