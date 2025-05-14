@@ -178,7 +178,8 @@ class AccessPage(BasePage):  # BasePage 상속으로 변경
             server_conn = self.data_manager._server_connection
             
             if not self.is_server_connected():
-                self.handle_connection_error("서버 연결 안됨")
+                # 팝업 제거: 조용히 로그만 남기고 진행
+                logger.warning("서버 연결 안됨 - 출입 데이터를 가져올 수 없습니다")
                 return
                 
             try:
@@ -187,8 +188,8 @@ class AccessPage(BasePage):  # BasePage 상속으로 변경
                 
                 # 타입 체크 - 방어적 프로그래밍
                 if not isinstance(response, dict):
+                    # 팝업 제거: 로그만 남김
                     logger.warning(f"예상치 못한 응답 타입: {type(response).__name__}")
-                    self.handle_api_error("출입 로그 조회 실패", f"서버가 예상치 못한 형식으로 응답했습니다: {response}")
                     return
                 
                 if response and response.get("success", False):
@@ -197,26 +198,23 @@ class AccessPage(BasePage):  # BasePage 상속으로 변경
                     logger.info(f"출입 로그 {len(self.access_logs)}건 로드 완료")
                     
                     # 상태 메시지 업데이트
-                    self.show_status_message(f"출입 로그 {len(self.access_logs)}건 로드됨", is_success=True)
+                    if hasattr(self, 'lbl_status'):
+                        self.lbl_status.setText(f"출입 로그 {len(self.access_logs)}건 로드됨")
+                        self.lbl_status.setStyleSheet("color: green;")
                 else:
-                    # 실패 처리
-                    error_msg = response.get("error", "서버 응답 오류")
-                    logger.warning(f"출입 로그 가져오기 실패: {error_msg}")
-                    self.handle_api_error("출입 로그 조회 실패", error_msg)
+                    logger.warning(f"출입 로그 가져오기 실패: {response.get('error', '서버 응답 오류')}")
             
             except Exception as e:
-                # API 호출 예외 처리
-                self.handle_api_exception("출입 데이터 가져오기 오류", e)
+                logger.error(f"출입 데이터 가져오기 오류: {str(e)}")
                 
             # 날짜 필터링 적용 및 테이블 업데이트
             self.filter_by_date()
             self.update_table()
             
         except Exception as e:
-            # 일반 예외 처리
+            # 팝업 제거: 로그만 남김
             logger.error(f"fetch_access_data 실행 중 오류: {str(e)}")
-            ErrorHandler.show_error_message("데이터 처리 오류", f"출입 데이터 처리 중 오류가 발생했습니다: {str(e)}")
-    
+            
     def update_table(self):
         """테이블에 데이터 표시"""
         # 테이블 초기화

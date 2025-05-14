@@ -11,6 +11,7 @@ from modules.data_manager import DataManager
 from modules.error_handler import ErrorHandler
 
 import matplotlib.pyplot as plt
+import koreanize_matplotlib
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import numpy as np
