@@ -205,8 +205,8 @@ class ExpirationPage(BasePage):
                 # 유통기한 경과 항목 가져오기
                 expired_items = self.data_manager._server_connection.get_expired_items()
                 
-                # 유통기한 경고 항목 가져오기 (7일 이내)
-                alert_items = self.data_manager._server_connection.get_expiry_alerts(days=7)
+                # 유통기한 경고 항목 가져오기 (2일 이내)
+                alert_items = self.data_manager._server_connection.get_expiry_alerts(days=2)
                 
                 # 데이터 병합 및 가공
                 items = []

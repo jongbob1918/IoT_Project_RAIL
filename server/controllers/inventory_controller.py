@@ -45,43 +45,53 @@ class InventoryController:
         Returns:
             Dict: 재고 상태 정보
         """
-        # 창고별 재고 수량 계산
-        warehouse_counts = {}
-        for item in self.inventory_items:
-            wh_id = item["warehouse_id"]
-            if wh_id not in warehouse_counts:
-                warehouse_counts[wh_id] = 0
-            warehouse_counts[wh_id] += 1
+        warehouses = {}
+        
+        # DB에서 창고 정보 조회
+        if self.db and hasattr(self.db, 'get_warehouses'):
+            warehouse_info = self.db.get_warehouses()
             
+            # 각 창고별 재고 수량 계산
+            warehouse_counts = {}
+            for item in self.inventory_items:
+                wh_id = item["warehouse_id"]
+                if wh_id not in warehouse_counts:
+                    warehouse_counts[wh_id] = 0
+                warehouse_counts[wh_id] += 1
+            
+            # 창고별 정보 구성
+            for wh in warehouse_info:
+                wh_id = wh["id"]
+                warehouses[wh_id] = {
+                    "total_capacity": wh["capacity"],
+                    "used_capacity": warehouse_counts.get(wh_id, 0),
+                    "utilization_rate": warehouse_counts.get(wh_id, 0) / wh["capacity"] if wh["capacity"] > 0 else 0
+                }
+        else:
+            # DB 연결이 없을 경우 기본값 사용
+            self.logger.warning("데이터베이스 연결 없음 - 기본 창고 정보 사용")
+            default_warehouses = ["A", "B", "C"]
+            warehouse_counts = {}
+            
+            # 각 창고별 재고 수량 계산
+            for item in self.inventory_items:
+                wh_id = item["warehouse_id"]
+                if wh_id not in warehouse_counts:
+                    warehouse_counts[wh_id] = 0
+                warehouse_counts[wh_id] += 1
+                
+            # 기본 창고 정보 설정
+            for wh_id in default_warehouses:
+                warehouses[wh_id] = {
+                    "total_capacity": 100,  # 기본 용량
+                    "used_capacity": warehouse_counts.get(wh_id, 0),
+                    "utilization_rate": warehouse_counts.get(wh_id, 0) / 100
+                }
+        
         return {
             "total_items": len(self.inventory_items),
             "warehouse_counts": warehouse_counts,
-            "warehouses": [
-                {
-                    "warehouse_id": "A",
-                    "total_capacity": 100,
-                    "used_capacity": warehouse_counts.get("A", 0),
-                    "utilization_rate": warehouse_counts.get("A", 0) / 100
-                },
-                {
-                    "warehouse_id": "B",
-                    "total_capacity": 100,
-                    "used_capacity": warehouse_counts.get("B", 0),
-                    "utilization_rate": warehouse_counts.get("B", 0) / 100
-                },
-                {
-                    "warehouse_id": "C",
-                    "total_capacity": 100,
-                    "used_capacity": warehouse_counts.get("C", 0),
-                    "utilization_rate": warehouse_counts.get("C", 0) / 100
-                },
-                {
-                    "warehouse_id": "D",
-                    "total_capacity": 100,
-                    "used_capacity": warehouse_counts.get("D", 0),
-                    "utilization_rate": warehouse_counts.get("D", 0) / 100
-                }
-            ]
+            "warehouses": warehouses
         }
         
     def get_inventory_items(self, category: Optional[str] = None, limit: int = 20, offset: int = 0) -> List[Dict]:

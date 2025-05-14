@@ -142,9 +142,9 @@ class ServerConnection(QObject):
                 if not self.sio.connected:
                     self.sio.connect(self.websocket_url, namespaces=["/ws"])
                 
-                self.is_connected = True
-                self.connectionStatusChanged.emit(True, "서버에 연결되었습니다.")
-                self.connection_status_notified = True
+                    self.is_connected = True
+                    self.connectionStatusChanged.emit(True, "서버에 연결되었습니다.")
+                    self.connection_status_notified = True
                 return True
                 
             except requests.exceptions.RequestException as e:
@@ -186,10 +186,10 @@ class ServerConnection(QObject):
         try:
             if self.sio.connected:
                 self.sio.disconnect()
-            
-            self.is_connected = False
-            logger.info("서버 연결 종료")
-            return True
+                
+                self.is_connected = False
+                logger.info("서버 연결 종료")
+                return True
         except Exception as e:
             logger.error(f"서버 연결 종료 중 오류: {str(e)}")
             return False
@@ -237,21 +237,11 @@ class ServerConnection(QObject):
     # ===== API 요청 메서드 =====
     
     def _send_request(self, method, endpoint, data=None, timeout=10):
-        """API 요청을 보내는 공통 메서드
-        
-        Args:
-            method: HTTP 메서드 ('GET', 'POST', 'PUT', 'DELETE')
-            endpoint: API 엔드포인트 (base_url 이후 경로)
-            data: 요청 데이터 (dict)
-            timeout: 요청 타임아웃 (초)
-            
-        Returns:
-            응답 데이터 (dict) 또는 None (오류 시)
-        """
-        if not endpoint.startswith('/'):
-            endpoint = '/' + endpoint
+        # 슬래시 중복 방지
+        if endpoint.startswith('/'):
+            endpoint = endpoint[1:]
         url = f"{self.api_base_url}/{endpoint}"
-        
+            
         try:
             headers = {'Content-Type': 'application/json'}
             
@@ -313,14 +303,14 @@ class ServerConnection(QObject):
                 text_response = response.text
                 logger.warning(f"JSON 응답 파싱 실패: {str(e)}, 응답: {text_response[:200]}")
                 return {
-                    "success": False,
-                    "error": {
-                        "code": "JSON_PARSE_ERROR",
-                        "message": "서버 응답을 JSON으로 파싱할 수 없습니다",
-                        "details": str(e),
-                        "raw_response": text_response[:200]  # 긴 응답은 잘라서 보여줌
+                        "success": False,
+                        "error": {
+                            "code": "JSON_PARSE_ERROR",
+                            "message": "서버 응답을 JSON으로 파싱할 수 없습니다",
+                            "details": str(e),
+                            "raw_response": text_response[:200]  # 긴 응답은 잘라서 보여줌
+                        }
                     }
-                }
             
         except requests.exceptions.RequestException as e:
             logger.error(f"API 요청 오류 ({url}): {str(e)}")
@@ -492,7 +482,7 @@ class ServerConnection(QObject):
                 }
             }
             
-        response = self._send_request('GET', f'environment/environment/warehouse/{warehouse_id}')
+        response = self._send_request('GET', f'environment/warehouse/{warehouse_id}')
         return self._standardize_response(response, f"창고 {warehouse_id} 상태 조회")
     
     def set_target_temperature(self, warehouse_id, target_temp):

@@ -166,19 +166,56 @@ class DataManager(QObject):
     def is_server_connected(self):
         """서버 연결 상태 반환 - 모든 페이지가 이 메서드를 사용해야 함"""
         return self._server_connected and self._server_connection and self._server_connection.is_connected
-    
+
+
     def _poll_server_data(self):
-        """주기적으로 서버 데이터 폴링"""
-        logger.info("데이터 폴링 스레드 시작")
+        """실시간 이벤트로 업데이트되지 않는 중요 데이터만 주기적으로 폴링"""
+        logger.info("데이터 폴링 스레드 시작 - 최소 폴링 모드")
+        
+        # 데이터 유형별 폴링 주기 설정 (초 단위)
+        polling_intervals = {
+            "environment": 120,  # 환경 데이터는 온도 이벤트로 실시간 업데이트되므로 거의 폴링 필요 없음
+            "inventory": 300,    # 재고 데이터는 5분마다
+            "expiry": 600,       # 유통기한 데이터는 10분마다
+            "access_logs": 300,  # 출입 로그는 5분마다
+            "waiting": 300       # 대기 데이터는 5분마다
+        }
+        
+        # 데이터 유형별 마지막 폴링 시간
+        last_poll_time = {k: 0 for k in polling_intervals.keys()}
         
         while self._running:
             try:
                 if self.is_server_connected():
-                    # 서버에 연결된 경우에만 데이터 폴링
-                    self._fetch_all_data()
+                    current_time = time.time()
+                    
+                    # 환경 데이터(WebSocket으로 실시간 업데이트)
+                    if current_time - last_poll_time["environment"] >= polling_intervals["environment"]:
+                        self._fetch_environment_data()
+                        last_poll_time["environment"] = current_time
+                    
+                    # 재고 데이터(주기적 업데이트 필요)
+                    if current_time - last_poll_time["inventory"] >= polling_intervals["inventory"]:
+                        self._fetch_inventory_data()
+                        last_poll_time["inventory"] = current_time
+                    
+                    # 유통기한 데이터(주기적 업데이트 필요)
+                    if current_time - last_poll_time["expiry"] >= polling_intervals["expiry"]:
+                        self._fetch_expiry_data() 
+                        last_poll_time["expiry"] = current_time
+                    
+                    # 출입 로그(주기적 업데이트)
+                    if current_time - last_poll_time["access_logs"] >= polling_intervals["access_logs"]:
+                        self._fetch_access_logs()
+                        last_poll_time["access_logs"] = current_time
+                    
+                    # 대기 데이터(주기적 업데이트)
+                    if current_time - last_poll_time["waiting"] >= polling_intervals["waiting"]:
+                        self._fetch_waiting_data()
+                        last_poll_time["waiting"] = current_time
                 
-                # 폴링 간격 - 항상 5초로 통일
-                time.sleep(10)
+                # 15초 간격으로 폴링 확인 (짧은 간격으로 체크하되 실제 데이터는 더 긴 간격으로 가져옴)
+                time.sleep(15)
                 
             except Exception as e:
                 logger.error(f"데이터 폴링 중 오류: {str(e)}")
@@ -190,9 +227,61 @@ class DataManager(QObject):
                     "message": str(e)
                 }
                 
-                # 오류 발생 시에도 동일한 폴링 간격 유지
-                time.sleep(10)
+                # 오류 발생 시 슬립
+                time.sleep(15)
     
+    # gui/modules/data_manager.py에 아래 메서드 추가
+    def load_page_data(self, page_name):
+        """특정 페이지가 활성화됐을 때 해당 페이지에 필요한 데이터만 가져옴"""
+        if not self.is_server_connected():
+            logger.warning(f"{page_name} 페이지 데이터 로드 실패: 서버 연결 안됨")
+            return False
+            
+        try:
+            logger.info(f"{page_name} 페이지 데이터 로드 중...")
+            
+            if page_name == "dashboard":
+                # 대시보드 페이지 - 모든 요약 데이터
+                self._fetch_environment_data()
+                self._fetch_inventory_data()
+                self._fetch_waiting_data()
+                self._fetch_expiry_data()
+                self._fetch_conveyor_status()
+                
+            elif page_name == "environment":
+                # 환경 페이지 - 환경 데이터만
+                self._fetch_environment_data()
+                
+            elif page_name == "inventory":
+                # 재고 페이지 - 재고 및 대기 데이터
+                self._fetch_inventory_data()
+                self._fetch_waiting_data()
+                
+            elif page_name == "expiration":
+                # 유통기한 페이지 - 유통기한 데이터
+                self._fetch_expiry_data()
+                
+            elif page_name == "devices":
+                # 장치 페이지 - 컨베이어 상태
+                self._fetch_conveyor_status()
+                
+            elif page_name == "access":
+                # 출입 페이지 - 출입 로그
+                self._fetch_access_logs()
+                
+            logger.info(f"{page_name} 페이지 데이터 로드 완료")
+            return True
+            
+        except Exception as e:
+            logger.error(f"{page_name} 페이지 데이터 로드 중 오류: {str(e)}")
+        
+        # 오류 정보 저장
+        self._last_error = {
+            "time": datetime.datetime.now(),
+            "type": type(e).__name__,
+            "message": str(e)
+        }
+        return False
     def _add_notification_thread_safe(self, message):
         """스레드 안전한 알림 추가 메서드"""
         # 메인 스레드에서 시그널 발생
@@ -235,7 +324,7 @@ class DataManager(QObject):
         if last_update is None or (current_time - last_update).total_seconds() >= min_interval:
             self._data_timestamps[data_type] = current_time
             return True
-        return False
+            return False
     
     def _fetch_environment_data(self):
         """환경 데이터 가져오기"""
@@ -411,7 +500,7 @@ class DataManager(QObject):
                         self._conveyor_status = 1  # 작동중
                     elif status == "paused":
                         self._conveyor_status = 2  # 일시정지
-                    else:
+                else:
                         self._conveyor_status = 0  # 정지
                 
                 # 변경 신호 발생

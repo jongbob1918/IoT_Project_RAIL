@@ -75,7 +75,7 @@ class WindowClass(QMainWindow):
         """서버 연결 객체 초기화"""
         # config.py 파일의 설정과 일치하도록 서버 호스트 및 포트 설정
         #server_host = "192.168.2.2"  # config에서는 127.0.0.1으로 설정
-        server_host = "192.168.0.33"
+        server_host = "192.168.2.2"
         server_port = 8000         # config의 SERVER_PORT와 일치
         
         
@@ -292,7 +292,10 @@ class WindowClass(QMainWindow):
                 if not self._reconnect_dialog_shown:
                     self.show_reconnect_dialog(message)
                     self._reconnect_dialog_shown = True
-    
+
+    def is_server_connected(self):
+        """서버 연결 상태 확인"""
+        return hasattr(self, 'server_conn') and self.server_conn.is_connected
     def notify_connection_to_pages(self, connected):
         """각 페이지에 연결 상태 변경 알림"""
         # 로그에 기록
@@ -325,8 +328,12 @@ class WindowClass(QMainWindow):
 
     # 사이드바 버튼 클릭 시 배경 활성화
     def activate_button(self, clicked_button, target_page):
+        """
+        사이드바 버튼 클릭 시 페이지 전환 및 데이터 로드
+        """
         self.stackedWidget.setCurrentWidget(target_page)
-
+        
+        # 버튼 스타일 변경
         for btn in self.buttons:
             if btn == clicked_button:
                 btn.setStyleSheet("""
@@ -348,7 +355,26 @@ class WindowClass(QMainWindow):
                         font-size: 14px;
                     }
                 """)
-    
+        
+        # 페이지별 데이터 로드
+        page_name = None
+        if target_page == self.page_dashboard:
+            page_name = "dashboard"
+        elif target_page == self.page_environment:
+            page_name = "environment"
+        elif target_page == self.page_inventory:
+            page_name = "inventory"
+        elif target_page == self.page_expiration:
+            page_name = "expiration"
+        elif target_page == self.page_devices:
+            page_name = "devices"
+        elif target_page == self.page_access:
+            page_name = "access"
+        
+        # 데이터 로드
+        if page_name and self.is_server_connected():
+            self.data_manager.load_page_data(page_name)
+
     def closeEvent(self, event):
         """애플리케이션 종료 시 호출되는 이벤트 핸들러"""
         # 서버 연결 종료

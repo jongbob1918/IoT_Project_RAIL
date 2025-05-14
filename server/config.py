@@ -3,7 +3,7 @@
 import os
 from typing import Dict, Any
 from pathlib import Path
-
+from db.db_manager import db_manager
 # 기본 경로 설정
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -17,7 +17,7 @@ except ImportError:
     pass     # python-dotenv가 설치되지 않은 경우 무시
 
 # ===== 서버 설정 =====
-SERVER_HOST = os.getenv("SERVER_HOST", "192.168.0.7")
+SERVER_HOST = os.getenv("SERVER_HOST", "192.168.2.2")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
@@ -25,8 +25,8 @@ DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_USER = os.getenv("DB_USER", "root")  # 기본값 수정
-DB_PASSWORD = os.getenv("DB_PASSWORD", "")  # 비밀번호 없이 설정
-DB_NAME = os.getenv("DB_NAME", "rail_db")  # rail_db로 통일
+DB_PASSWORD = os.getenv("DB_PASSWORD", "134679")  # 비밀번호 없이 설정
+DB_NAME = os.getenv("DB_NAME", "rail_automation")  # rail_automation 통일
 DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # ===== TCP 하드웨어 통신 설정 =====
@@ -52,7 +52,7 @@ SOCKETIO_PING_INTERVAL = int(os.getenv("SOCKETIO_PING_INTERVAL", "25"))
 SOCKETIO_ASYNC_MODE = os.getenv("SOCKETIO_ASYNC_MODE", "threading") 
 
 # ===== 창고 환경 설정 =====
-WAREHOUSES = {
+DEFAULT_WAREHOUSES = {
     # A: 냉동 식품 창고 (-30°C ~ -18°C)
     "A": {"type": "freezer", "temp_min": -30, "temp_max": -18},
     # B: 냉장 식품 창고 (0°C ~ 10°C)
@@ -60,6 +60,13 @@ WAREHOUSES = {
     # C: 상온 식품 창고 (15°C ~ 25°C)
     "C": {"type": "room_temp", "temp_min": 15, "temp_max": 25}
 }
+def get_warehouse_config():
+    db_values = db_manager.get_warehouse_temp_ranges()
+    if db_values:
+        return db_values
+    # DB 연결이 없을 때만 기본값 사용
+    return DEFAULT_WAREHOUSES
+WAREHOUSES = get_warehouse_config()
 
 # ===== 로깅 설정 =====
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

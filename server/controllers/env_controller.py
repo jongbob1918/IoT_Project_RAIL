@@ -61,8 +61,40 @@ class EnvController:
         tcp_handler.register_device_handler('env_controller', 'res', self.process_response)
         tcp_handler.register_device_handler('env_controller', 'err', self.process_error)
         
-        logger.info("환경 컨트롤러 초기화 완료")
-    
+        def set_temperature(self, warehouse, temperature):
+            """특정 창고의 온도를 설정합니다.
+            
+            Args:
+                warehouse: 창고 ID (A, B, C)
+                temperature: 설정할 온도 값 (정수)
+                
+            Returns:
+                dict: 성공/실패 상태와 메시지를 포함한 응답
+            """
+            # 창고 존재 확인
+            if warehouse not in self.warehouse_data:
+                logger.error(f"존재하지 않는 창고: {warehouse}")
+                return {"status": "error", "message": f"존재하지 않는 창고: {warehouse}"}
+                
+            # 온도 값을 정수로 변환 (API는 정수로 받음)
+            try:
+                temperature = int(temperature)
+            except (ValueError, TypeError):
+                logger.error(f"온도를 정수로 변환할 수 없음: {temperature}")
+                return {"status": "error", "message": f"온도를 정수로 변환할 수 없음: {temperature}"}
+                
+            # 유효 범위 확인
+            min_temp, max_temp = self.warehouse_data[warehouse]["temp_range"]
+            if temperature < min_temp or temperature > max_temp:
+                logger.error(f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다.")
+                return {"status": "error", "message": f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다."}
+            
+            # set_target_temperature 메서드 호출
+            result = self.set_target_temperature(warehouse, temperature)
+            
+            # 결과 그대로 반환
+            return result
+
     def process_event(self, message_data):
         """이벤트 메시지 처리 - 'E' 타입 메시지"""
         if 'content' not in message_data:
@@ -382,7 +414,7 @@ class EnvController:
         """소켓 이벤트 발송"""
         if not self.socketio:
             return
-            
+        
         try:
             event_data = {
                 "type": "event",

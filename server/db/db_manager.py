@@ -105,6 +105,8 @@ class DBManager:
             self.connected = False
             return False
     
+
+
     def ensure_connection(self) -> bool:
         """연결 확인 및 필요 시 재연결"""
         if not MYSQL_AVAILABLE:
@@ -113,6 +115,7 @@ class DBManager:
         if not self.connection or not hasattr(self.connection, 'is_connected') or not self.connection.is_connected():
             return self.connect()
         return True
+    
     
     def execute_query(self, query: str, params: Tuple = None) -> Optional[List[Tuple]]:
         """SELECT 쿼리 실행"""
@@ -219,6 +222,7 @@ class DBManager:
         # DB 연결이 없는 경우 빈 리스트 반환
         return []
     
+    
     def get_warehouse_status(self, warehouse_id: str = None) -> Dict[str, Any]:
         """창고 상태 정보 조회"""
         if self.connected:
@@ -268,7 +272,51 @@ class DBManager:
         
         # DB 연결이 없는 경우 빈 사전 반환
         return {}
-
+       # db_manager.py에 추가
+    def get_warehouse_temp_ranges(self):
+        """창고별 온도 범위 조회"""
+        if not self.ensure_connection():
+            return {}
+            
+        query = "SELECT id, min_temp, max_temp FROM warehouse"
+        result = self.execute_query(query)
+        
+        if not result:
+            return {}
+            
+        ranges = {}
+        for row in result:
+            ranges[row[0]] = {
+                "min_temp": row[1],
+                "max_temp": row[2]
+            }
+        return ranges
+    
+    def get_warehouses(self) -> List[Dict]:
+        """모든 창고 정보를 조회합니다."""
+        if not self.ensure_connection():
+            logger.warning("DB 연결 없음 - 창고 정보 조회 불가")
+            return []
+            
+        try:
+            query = "SELECT id, warehouse_type, capacity, used_capacity FROM warehouse"
+            result = self.execute_query(query)
+            
+            if result:
+                warehouses = []
+                for row in result:
+                    warehouses.append({
+                        "id": row[0],
+                        "type": row[1],
+                        "capacity": row[2],
+                        "used_capacity": row[3]
+                    })
+                return warehouses
+            return []
+        except Exception as e:
+            logger.error(f"창고 정보 조회 오류: {str(e)}")
+            return []
+    
     # 온도 로그 저장 메서드 추가
     def insert_temperature_log(self, warehouse_id: str, temperature: float) -> bool:
         """온도 로그를 데이터베이스에 저장합니다."""

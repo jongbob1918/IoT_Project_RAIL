@@ -161,7 +161,7 @@ else:
 
 # 기능별로 분리된 API 모듈을 등록
 app.register_blueprint(sort_bp, url_prefix='/api/sort')
-app.register_blueprint(inventory_bp, url_prefix='/api/inventory')
+app.register_blueprint(inventory_bp, url_prefix='/api/inventory')   
 app.register_blueprint(env_bp, url_prefix='/api/environment')
 app.register_blueprint(access_bp, url_prefix='/api/access')
 app.register_blueprint(expiry_bp, url_prefix='/api/expiry')

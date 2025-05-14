@@ -40,23 +40,7 @@ class ExpiryController:
         
         # 데이터베이스 연결이 없는 경우 빈 배열 반환
         today = datetime.now().date()
-        self.logger.warning("데이터베이스 연결 없음 - 샘플 데이터 사용")
         
-        # 샘플 데이터 반환 (기존 하드코딩된 데이터)
-        sample_data = [
-            {
-                "item_id": "B001",
-                "barcode": "B0301250510",
-                "name": "CJ 묵은지 김치",
-                "warehouse_id": "B",
-                "shelf_id": "B01",
-                "expiry_date": "2025-05-10",
-                "days_remaining": 5,
-                "status": "warning",
-                "entry_date": "2025-05-03"
-            }
-        ]
-        return sample_data
         
     def get_expired_items(self) -> List[Dict]:
         """유통기한 만료 물품을 조회합니다.
@@ -70,23 +54,6 @@ class ExpiryController:
         
         # 데이터베이스 연결이 없는 경우 빈 배열 반환
         today = datetime.now().date()
-        self.logger.warning("데이터베이스 연결 없음 - 샘플 데이터 사용")
-        
-        # 샘플 데이터 반환 (기존 하드코딩된 데이터)
-        sample_data = [
-            {
-                "item_id": "C001",
-                "barcode": "C0806250505",
-                "name": "롯데 샌드위치용 식빵",
-                "warehouse_id": "C", 
-                "shelf_id": "C01",
-                "expiry_date": "2025-05-05",
-                "days_remaining": 0,
-                "status": "expired",
-                "entry_date": "2025-05-01"
-            }
-        ]
-        return sample_data
         
     def process_expired_item(self, item_id: str, action: str, description: str) -> bool:
         """유통기한 만료 물품을 처리합니다.

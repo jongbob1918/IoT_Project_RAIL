@@ -64,7 +64,7 @@ class EnvironmentPage(BasePage):
     def initialize_warehouse_data(self):
         """초기 창고 상태 정보 설정"""
         self.warehouses = {
-            "A": {"name": "냉동 창고 (A)", "current_temp": 0.0, "target_temp": -20.0, "status": "알 수 없음", "mode": "정지"},
+            "A": {"name": "냉동 창고 (A)", "current_temp": 0.0, "target_temp": -24.0, "status": "알 수 없음", "mode": "정지"},
             "B": {"name": "냉장 창고 (B)", "current_temp": 0.0, "target_temp": 5.0, "status": "알 수 없음", "mode": "정지"},
             "C": {"name": "상온 창고 (C)", "current_temp": 0.0, "target_temp": 20.0, "status": "알 수 없음", "mode": "정지"}
         }

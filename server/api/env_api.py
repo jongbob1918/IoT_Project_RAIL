@@ -23,7 +23,7 @@ def get_env_controller():
     return None
 
 # ==== 환경 상태 조회 ====
-@bp.route('/environment/status', methods=['GET'])
+@bp.route('/status', methods=['GET'])
 def get_environment_status():
     """현재 환경 상태를 조회합니다."""
     env_controller = get_env_controller()
@@ -37,7 +37,7 @@ def get_environment_status():
     return jsonify(result)
 
 # ==== 창고별 상태 조회 ====
-@bp.route('/environment/warehouse/<warehouse>', methods=['GET'])
+@bp.route('/warehouse/<warehouse>', methods=['GET'])  # 'environment/' 제거
 def get_warehouse_status(warehouse):
     """특정 창고의 환경 상태를 조회합니다."""
     # 창고 ID 검증
@@ -53,7 +53,7 @@ def get_warehouse_status(warehouse):
     return jsonify(result)
 
 # ==== 온도 설정 ====
-@bp.route('/environment/control', methods=['PUT'])
+@bp.route('/control', methods=['PUT'])  # 'environment/' 제거
 def set_environment_control():
     """창고 온도 제어 설정을 변경합니다."""
     data = request.json

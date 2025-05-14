@@ -67,12 +67,16 @@ def get_inventory_status():
         
         # 결과 타입 체크 및 변환
         if status is None:
-            status = {"status": "unknown"}
+            status = {"status": "unknown", "warehouses": {}}
             
         if not isinstance(status, dict):
             logger.warning(f"재고 상태: 예상치 못한 데이터 타입 - {type(status).__name__}")
-            status = {"status": "error", "message": "데이터 형식 오류"}
-        
+            status = {"status": "error", "message": "데이터 형식 오류", "warehouses": {}}
+        else:
+            # 딕셔너리지만 warehouses 키가 없는 경우 추가
+            if "warehouses" not in status:
+                status["warehouses"] = {}
+                
         # GUI에서 기대하는 형식으로 반환
         return jsonify({
             "success": True,
