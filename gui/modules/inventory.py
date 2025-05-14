@@ -163,6 +163,14 @@ class InventoryPage(BasePage):
         self.update_warehouse_data()
         
         logger.info("재고 관리 페이지 초기화 완료")
+
+        # 헤더 레이블 폰트 설정
+        headers = [self.label, self.label_2, self.btn_inventory_list]
+        for label in headers:
+            font = label.font()
+            font.setBold(True)
+            font.setWeight(QFont.Weight.Bold)
+            label.setFont(font)
     
     def connect_buttons(self):
         """버튼 이벤트 연결"""

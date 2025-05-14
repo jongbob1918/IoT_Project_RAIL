@@ -53,6 +53,14 @@ class DevicesPage(BasePage):
         self.update_ui()
         
         logger.info("장치 관리 페이지 초기화 완료")
+
+        # 헤더 레이블 폰트 설정
+        headers = [self.label, self.label_2, self.label_10, self.label_5, self.label_6, self.label_7, self.label_9]
+        for label in headers:
+            font = label.font()
+            font.setBold(True)
+            font.setWeight(QFont.Weight.Bold)
+            label.setFont(font)
     
     def initialize_counters(self):
         """카운터 초기화"""

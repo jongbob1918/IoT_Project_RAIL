@@ -61,6 +61,14 @@ class ExpirationPage(BasePage):
         self.search_expired_items()
         
         logger.info("유통기한 관리 페이지 초기화 완료")
+
+        # 헤더 레이블 폰트 설정
+        headers = [self.label]
+        for label in headers:
+            font = label.font()
+            font.setBold(True)
+            font.setWeight(QFont.Weight.Bold)
+            label.setFont(font)
     
     def setup_date_range(self):
         """날짜 범위 초기 설정"""

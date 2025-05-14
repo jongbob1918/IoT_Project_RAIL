@@ -52,6 +52,14 @@ class EnvironmentPage(BasePage):
         self.connect_data_signals()
         
         logger.info("환경 관리 페이지 초기화 완료")
+
+        # 헤더 레이블 폰트 설정
+        headers = [self.label_title_A, self.label_title_B, self.label_title_C]
+        for label in headers:
+            font = label.font()
+            font.setBold(True)
+            font.setWeight(QFont.Weight.Bold)
+            label.setFont(font)
     
     def initialize_warehouse_data(self):
         """초기 창고 상태 정보 설정"""

@@ -56,6 +56,14 @@ class DashboardPage(BasePage):
         self.connect_data_signals()
         
         logger.info("대시보드 페이지 초기화 완료")
+
+        # 헤더 레이블 폰트 설정
+        headers = [self.label_12, self.label_2, self.label_11, self.label_3, self.label_4, self.datetime]
+        for label in headers:
+            font = label.font()
+            font.setBold(True)
+            font.setWeight(QFont.Weight.Bold)
+            label.setFont(font)
     
     def setup_time_timer(self):
         """시간 표시용 타이머 설정"""
@@ -293,3 +301,5 @@ class DashboardPage(BasePage):
             self.add_notification(f"정보: {message}")
         else:
             self.add_notification(message)
+        
+        

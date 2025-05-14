@@ -50,6 +50,14 @@ class AccessPage(BasePage):  # BasePage 상속으로 변경
         self.show_status_message("서버 연결 대기 중...", is_info=True)
         
         logger.info("출입 관리 페이지 초기화 완료")
+
+        # 헤더 레이블 폰트 설정
+        headers = [self.label_4]
+        for label in headers:
+            font = label.font()
+            font.setBold(True)
+            font.setWeight(QFont.Weight.Bold)
+            label.setFont(font)
     
     def init_data(self):
         """데이터 초기화"""
