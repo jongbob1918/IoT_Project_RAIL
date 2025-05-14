@@ -1,306 +1,314 @@
-import socketio
-import requests
-from PyQt6.QtCore import QObject, pyqtSignal
 import logging
+import requests
+import json
+import time
+import socketio
+from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 
+# 로깅 설정
 logger = logging.getLogger(__name__)
 
 class ServerConnection(QObject):
-    """서버 연결 및 통신을 관리하는 클래스"""
+    """서버 연결 관리 클래스
     
-    # 시그널 정의
-    connectionStatusChanged = pyqtSignal(bool, str)  # 연결 상태 변경 (성공 여부, 메시지)
-    eventReceived = pyqtSignal(str, str, dict)  # 이벤트 수신 (카테고리, 액션, 페이로드)
+    이 클래스는 GUI 클라이언트와 백엔드 서버 간의 통신을 담당합니다.
+    REST API와 Socket.IO WebSocket 연결을 모두 관리합니다.
+    """
+    
+    # 신호 정의
+    connectionStatusChanged = pyqtSignal(bool, str)  # 연결 상태 변경 신호 (연결됨, 메시지)
+    eventReceived = pyqtSignal(str, str, dict)  # 서버 이벤트 수신 신호 (카테고리, 액션, 페이로드)
     
     def __init__(self, server_host="localhost", server_port=8000):
+        """생성자
+        
+        Args:
+            server_host: 서버 호스트 (기본값: localhost)
+            server_port: 서버 포트 (기본값: 8000)
+        """
         super().__init__()
         
-        # 서버 설정
+        # 서버 연결 정보
         self.server_host = server_host
         self.server_port = server_port
         self.api_base_url = f"http://{server_host}:{server_port}/api"
         self.websocket_url = f"http://{server_host}:{server_port}"
         
-        # 상태 변수
+        # 연결 상태
         self.is_connected = False
         self.connection_error = None
         
         # Socket.IO 클라이언트 설정
-        self.sio = socketio.Client()
-        self.setup_socketio_events()
+        self.sio = socketio.Client(logger=logger, engineio_logger=False)
         
-        # DataManager 참조 (나중에 설정)
-        self.data_manager = None
-    
-    def set_data_manager(self, data_manager):
-        """DataManager 참조 설정"""
-        self.data_manager = data_manager
-        # 데이터 매니저에도 서버 연결 객체 설정
-        if self.data_manager:
-            self.data_manager.set_server_connection(self)
-    
-    def setup_socketio_events(self):
-        """Socket.IO 이벤트 핸들러 설정"""
+        # Socket.IO 이벤트 핸들러 등록
+        self.register_socketio_handlers()
         
-        @self.sio.event
+        # 재연결 관련 설정
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.reconnect_delay = 2  # 초 단위
+        self.reconnect_timer = QTimer(self)
+        self.reconnect_timer.timeout.connect(self.attempt_reconnect)
+    
+    def register_socketio_handlers(self):
+        """Socket.IO 이벤트 핸들러 등록"""
+        @self.sio.event(namespace='/ws')
         def connect():
-            print(f"Socket.IO 서버에 연결됨: {self.websocket_url}")
+            logger.info("Socket.IO 연결 성공")
             self.is_connected = True
             self.connectionStatusChanged.emit(True, "서버에 연결되었습니다.")
-            
-            # 데이터 매니저에 연결 상태 업데이트
-            if self.data_manager:
-                self.data_manager.update_server_connection_status(True)
-                # 즉시 컨베이어 상태 변경 이벤트 발생
-                self.data_manager.conveyor_status_changed.emit()
         
-        @self.sio.event
+        @self.sio.event(namespace='/ws')
         def connect_error(data):
-            print(f"Socket.IO 연결 오류: {data}")
+            logger.error(f"Socket.IO 연결 오류: {data}")
+            self.connection_error = f"WebSocket 연결 오류: {data}"
             self.is_connected = False
-            self.connection_error = str(data)
-            self.connectionStatusChanged.emit(False, f"서버 연결 오류: {data}")
-            
-            # 데이터 매니저에 연결 상태 업데이트
-            if self.data_manager:
-                self.data_manager.update_server_connection_status(False)
-                # 즉시 컨베이어 상태 변경 이벤트 발생
-                self.data_manager.conveyor_status_changed.emit()
+            self.connectionStatusChanged.emit(False, self.connection_error)
         
-        @self.sio.event
+        @self.sio.event(namespace='/ws')
         def disconnect():
-            print("Socket.IO 서버와 연결이 끊어졌습니다.")
+            logger.warning("Socket.IO 연결 종료")
             self.is_connected = False
-            self.connectionStatusChanged.emit(False, "서버와 연결이 끊어졌습니다.")
-            
-            # 데이터 매니저에 연결 상태 업데이트
-            if self.data_manager:
-                self.data_manager.update_server_connection_status(False)
-                # 즉시 컨베이어 상태 변경 이벤트 발생
-                self.data_manager.conveyor_status_changed.emit()
+            self.connectionStatusChanged.emit(False, "서버 연결이 종료되었습니다.")
         
-        @self.sio.on("event", namespace="/ws")
+        @self.sio.on('event', namespace='/ws')
         def on_event(data):
-            print(f"이벤트 수신: {data}")
-            
-            if isinstance(data, dict):
-                category = data.get("category", "unknown")
-                action = data.get("action", "unknown")
-                payload = data.get("payload", {})
+            """서버에서 이벤트 수신 시 처리"""
+            try:
+                # 이벤트 데이터 파싱
+                category = data.get('category', 'unknown')
+                action = data.get('action', 'unknown')
+                payload = data.get('payload', {})
                 
-                # 이벤트 시그널 발생
+                logger.debug(f"서버 이벤트 수신: {category}/{action}")
+                
+                # 이벤트 신호 발생
                 self.eventReceived.emit(category, action, payload)
-                
-                # 데이터 매니저에 직접 데이터 업데이트 (특정 이벤트)
-                if self.data_manager and category == "environment" and action == "temperature_update":
-                    warehouse_id = payload.get("warehouse_id")
-                    temperature = payload.get("temperature")
-                    if warehouse_id in self.data_manager._warehouse_data and temperature is not None:
-                        self.data_manager._warehouse_data[warehouse_id]["temperature"] = temperature
-                        # 상태 업데이트
-                        min_temp = self.data_manager.temp_thresholds[warehouse_id]["min"]
-                        max_temp = self.data_manager.temp_thresholds[warehouse_id]["max"]
-                        if min_temp <= temperature <= max_temp:
-                            self.data_manager._warehouse_data[warehouse_id]["status"] = "정상"
-                        else:
-                            self.data_manager._warehouse_data[warehouse_id]["status"] = "주의" 
-                        self.data_manager.warehouse_data_changed.emit()
-                
-                # 컨베이어 상태 업데이트
-                if self.data_manager and category == "sorter" and action == "status_update":
-                    is_running = payload.get("is_running")
-                    if is_running is not None:
-                        self.data_manager._conveyor_status = 1 if is_running else 0
-                        self.data_manager.conveyor_status_changed.emit()
-                
-        # 바코드 스캔 이벤트 처리
-        @self.sio.on("barcode_scanned", namespace="/ws")
-        def on_barcode_scanned(data):
-            print(f"바코드 스캔 이벤트 수신: {data}")
-            # 데이터가 올바른 형식인지 확인
-            if isinstance(data, dict) and "barcode" in data and "category" in data:
-                # sorter 카테고리, barcode_scanned 액션으로 표준화된 이벤트 형식으로 변환
-                self.eventReceived.emit("sorter", "barcode_scanned", data)
+            except Exception as e:
+                logger.error(f"이벤트 처리 중 오류: {str(e)}")
     
     def connect_to_server(self):
         """서버에 연결 시도"""
+        self.reconnect_attempts = 0  # 초기화
+        return self._attempt_connection()
+    
+    def _attempt_connection(self):
+        """내부 연결 시도 함수"""
         try:
             # REST API 연결 테스트
-            response = requests.get(f"{self.api_base_url}/status", timeout=5)
-            response.raise_for_status()
-            
-            # 새로운 Socket.IO 클라이언트 생성
-            self.sio = socketio.Client(
-                logger=False,
-                engineio_logger=False,
-                reconnection=True,
-                reconnection_attempts=3,
-                reconnection_delay=1,
-                reconnection_delay_max=5,
-                wait_timeout=5
-            )
-            
-            # 이벤트 핸들러 재설정
-            self.setup_socketio_events()
-            
-            # WebSocket 연결
-            if not self.is_connected:
-                self.sio.connect(self.websocket_url, namespaces=["/ws"])
+            try:
+                response = requests.get(f"{self.api_base_url}/status", timeout=5)
+                response.raise_for_status()
                 
-                # 연결 후 즉시 상태 업데이트
-                if self.data_manager:
-                    self.data_manager.update_server_connection_status(True)
-                    self.data_manager.conveyor_status_changed.emit()
-            
-            return True
+                # 연결 성공 시 WebSocket 연결
+                if not self.sio.connected:
+                    self.sio.connect(self.websocket_url, namespaces=["/ws"])
+                
+                self.is_connected = True
+                self.connectionStatusChanged.emit(True, "서버에 연결되었습니다.")
+                return True
+                
+            except requests.exceptions.RequestException as e:
+                logger.error(f"API 서버 연결 실패: {str(e)}")
+                self.connection_error = f"API 서버 연결 실패: {str(e)}"
+                self.is_connected = False
+                self.connectionStatusChanged.emit(False, self.connection_error)
+                return False
+                
         except Exception as e:
+            logger.error(f"서버 연결 시 예상치 못한 오류: {str(e)}")
             self.connection_error = str(e)
             self.is_connected = False
-            self.connectionStatusChanged.emit(False, f"서버 연결 실패: {str(e)}")
-            print(f"서버 연결 실패: {str(e)}")
-            
-            # 데이터 매니저에 연결 상태 업데이트
-            if self.data_manager:
-                self.data_manager.update_server_connection_status(False)
-                self.data_manager.conveyor_status_changed.emit()
-            
+            self.connectionStatusChanged.emit(False, f"서버 연결 오류: {str(e)}")
             return False
     
     def disconnect_from_server(self):
         """서버 연결 종료"""
-        if self.is_connected:
-            try:
+        try:
+            if self.sio.connected:
                 self.sio.disconnect()
-                self.is_connected = False
-                print("서버 연결이 종료되었습니다.")
-                
-                # 데이터 매니저에 연결 상태 업데이트
-                if self.data_manager:
-                    self.data_manager.update_server_connection_status(False)
-                
-            except Exception as e:
-                print(f"서버 연결 종료 오류: {str(e)}")
-                
-    def check_connection(self):
-        """서버 연결 상태 확인"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
-        return True
-    
-    # ==== API 호출 메서드 ====
-    def get_environment_data(self):
-        """환경 데이터 가져오기"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
-        
-        try:
-            response = requests.get(f"{self.api_base_url}/environment/status", timeout=3)
-            response.raise_for_status()
-            return response.json()
+            
+            self.is_connected = False
+            logger.info("서버 연결 종료")
+            return True
         except Exception as e:
-            print(f"환경 데이터 가져오기 실패: {str(e)}")
-            raise
+            logger.error(f"서버 연결 종료 중 오류: {str(e)}")
+            return False
     
-    def get_inventory_data(self):
-        """재고 데이터 가져오기"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
+    def attempt_reconnect(self):
+        """재연결 시도 함수"""
+        if self.is_connected:
+            self.reconnect_timer.stop()
+            return
+            
+        if self.reconnect_attempts >= self.max_reconnect_attempts:
+            logger.warning(f"최대 재연결 시도 횟수({self.max_reconnect_attempts}회)에 도달했습니다.")
+            self.reconnect_timer.stop()
+            self.connectionStatusChanged.emit(False, "재연결 시도 횟수 초과")
+            return
+            
+        logger.info(f"서버 재연결 시도 중... ({self.reconnect_attempts + 1}/{self.max_reconnect_attempts})")
+        self.reconnect_attempts += 1
         
+        # 오류 발생 방지를 위해 try-except로 감싸기
         try:
-            response = requests.get(f"{self.api_base_url}/inventory/status", timeout=3)
-            response.raise_for_status()
-            return response.json()
+            if self._attempt_connection():
+                logger.info("서버 재연결 성공")
+                self.reconnect_timer.stop()
+            else:
+                # 다음 재시도까지 대기 시간 증가 (지수 백오프)
+                next_delay = min(30, self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)))
+                logger.info(f"다음 재연결 시도까지 {next_delay}초 대기")
+                self.reconnect_timer.setInterval(next_delay * 1000)  # 밀리초 단위로 변환
         except Exception as e:
-            print(f"재고 데이터 가져오기 실패: {str(e)}")
-            raise
+            logger.error(f"재연결 시도 중 예외 발생: {str(e)}")
+            # 다음 재시도 일정 계속 유지
+            next_delay = min(30, self.reconnect_delay * (2 ** (self.reconnect_attempts - 1)))
+            self.reconnect_timer.setInterval(next_delay * 1000)
+                                                 
+    def start_reconnect_timer(self):
+        """재연결 타이머 시작"""
+        if not self.reconnect_timer.isActive():
+            self.reconnect_attempts = 0
+            self.reconnect_timer.start(self.reconnect_delay * 1000)
     
-    def get_expiry_data(self):
-        """유통기한 데이터 가져오기"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
+    # ===== API 요청 메서드 =====
+    
+    def _send_request(self, method, endpoint, data=None, timeout=10):
+        """API 요청을 보내는 공통 메서드
+        
+        Args:
+            method: HTTP 메서드 ('GET', 'POST', 'PUT', 'DELETE')
+            endpoint: API 엔드포인트 (base_url 이후 경로)
+            data: 요청 데이터 (dict)
+            timeout: 요청 타임아웃 (초)
+            
+        Returns:
+            응답 데이터 (dict) 또는 None (오류 시)
+        """
+        url = f"{self.api_base_url}/{endpoint}"
         
         try:
-            response_over = requests.get(f"{self.api_base_url}/expiry/expired", timeout=3)
-            response_soon = requests.get(f"{self.api_base_url}/expiry/alerts", timeout=3)
-            response_over.raise_for_status()
-            response_soon.raise_for_status()
+            headers = {'Content-Type': 'application/json'}
+            
+            if method == 'GET':
+                response = requests.get(url, params=data, headers=headers, timeout=timeout)
+            elif method == 'POST':
+                response = requests.post(url, json=data, headers=headers, timeout=timeout)
+            elif method == 'PUT':
+                response = requests.put(url, json=data, headers=headers, timeout=timeout)
+            elif method == 'DELETE':
+                response = requests.delete(url, json=data, headers=headers, timeout=timeout)
+            else:
+                logger.error(f"지원하지 않는 HTTP 메서드: {method}")
+                return None
+            
+            # 응답 검사
+            response.raise_for_status()
+            
+            # JSON 응답 파싱
+            result = response.json()
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"API 요청 오류 ({url}): {str(e)}")
+            self.connectionStatusChanged.emit(False, f"서버 요청 오류: {str(e)}")
+            return None
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"응답 JSON 파싱 오류: {str(e)}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"예상치 못한 오류: {str(e)}")
+            return None
+    
+    # ===== 분류기 API =====
+    
+    def start_sorting(self):
+        """분류기 작동 시작"""
+        return self._send_request('POST', 'sort/inbound/start')
+    
+    def stop_sorting(self):
+        """분류기 작동 중지"""
+        return self._send_request('POST', 'sort/inbound/stop')
+    
+    def emergency_stop(self):
+        """분류기 긴급 정지"""
+        return self._send_request('POST', 'sort/emergency/stop')
+    
+    def get_sorter_status(self):
+        """분류기 상태 조회"""
+        return self._send_request('GET', 'sort/inbound/status')
+    
+    # ===== 환경 제어 API =====
+    
+    def get_environment_status(self):
+        """전체 환경 상태 조회"""
+        response = self._send_request('GET', 'environment/environment/status')
+        if response:
+            # 기본 성공 응답 구조 추가
             return {
-                "over": len(response_over.json()),
-                "soon": len(response_soon.json())
+                "success": True,
+                "data": response
             }
-        except Exception as e:
-            print(f"유통기한 데이터 가져오기 실패: {str(e)}")
-            raise
+        return {"success": False}
     
-    def get_conveyor_status(self):
-        """컨베이어 상태 가져오기"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
-        
-        try:
-            response = requests.get(f"{self.api_base_url}/sort/inbound/status", timeout=3)
-            response.raise_for_status()
-            data = response.json()
-            return 1 if data.get("is_running", False) else 0
-        except Exception as e:
-            print(f"컨베이어 상태 가져오기 실패: {str(e)}")
-            raise
+    def get_warehouse_status(self, warehouse_id):
+        """특정 창고 환경 상태 조회"""
+        return self._send_request('GET', f'environment/environment/warehouse/{warehouse_id}')
     
-    def get_today_input(self):
-        """오늘 입고 현황 가져오기"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
-        
-        try:
-            response = requests.get(f"{self.api_base_url}/inventory/today_input", timeout=3)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            print(f"오늘 입고 현황 가져오기 실패: {str(e)}")
-            raise
+    def set_target_temperature(self, warehouse_id, target_temp):
+        """창고 목표 온도 설정"""
+        data = {
+            'warehouse': warehouse_id,
+            'target_temp': float(target_temp)  # 숫자형 보장
+        }
+        return self._send_request('PUT', 'environment/environment/control', data)
+    
+    # ===== 재고 관리 API =====
+    
+    def get_inventory_status(self):
+        """재고 상태 조회"""
+        return self._send_request('GET', 'inventory/status')
+    
+    def get_inventory_items(self, category=None, limit=20, offset=0):
+        """재고 물품 목록 조회"""
+        params = {
+            'limit': limit,
+            'offset': offset
+        }
+        if category:
+            params['category'] = category
             
-    def get_error_count(self):
-        """오류 건수 가져오기"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
-        
-        try:
-            response = requests.get(f"{self.api_base_url}/sort/status", timeout=3)
-            response.raise_for_status()
-            data = response.json()
-            # 분류기 상태 데이터에서 E 카테고리 건수 추출
-            sort_counts = data.get("status", {}).get("sort_counts", {})
-            return sort_counts.get("E", 0)
-        except Exception as e:
-            print(f"오류 건수 가져오기 실패: {str(e)}")
-            return 0  # 오류 시 기본값 반환
-            
-    def get_waiting_count(self):
-        """대기 건수 가져오기"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
-        
-        try:
-            response = requests.get(f"{self.api_base_url}/sort/status", timeout=3)
-            response.raise_for_status()
-            data = response.json()
-            # 분류기 상태 데이터에서 대기 건수 추출
-            return data.get("status", {}).get("items_waiting", 0)
-        except Exception as e:
-            print(f"대기 건수 가져오기 실패: {str(e)}")
-            return 0  # 오류 시 기본값 반환
-            
-    def get_total_processed(self):
-        """총 처리 건수 가져오기"""
-        if not self.is_connected:
-            raise ConnectionError("서버에 연결되어 있지 않습니다.")
-        
-        try:
-            response = requests.get(f"{self.api_base_url}/sort/status", timeout=3)
-            response.raise_for_status()
-            data = response.json()
-            # 분류기 상태 데이터에서 총 처리 건수 추출
-            return data.get("status", {}).get("items_processed", 0)
-        except Exception as e:
-            print(f"총 처리 건수 가져오기 실패: {str(e)}")
-            return 0  # 오류 시 기본값 반환
+        return self._send_request('GET', 'inventory/items', params)
+    
+    def get_inventory_item(self, item_id):
+        """재고 물품 상세 조회"""
+        return self._send_request('GET', f'inventory/items/{item_id}')
+    
+    # ===== 유통기한 관리 API =====
+    
+    def get_expiry_alerts(self, days=7):
+        """유통기한 임박 물품 조회"""
+        params = {'days': days}
+        return self._send_request('GET', 'expiry/alerts', params)
+    
+    def get_expired_items(self):
+        """유통기한 경과 물품 조회"""
+        return self._send_request('GET', 'expiry/expired')
+    
+    # ===== 출입 관리 API =====
+    
+    def get_access_logs(self):
+        """출입 기록 조회"""
+        return self._send_request('GET', 'access/logs')
+    
+    def open_door(self):
+        """출입문 열기"""
+        return self._send_request('POST', 'access/open-door')
+    
+    def close_door(self):
+        """출입문 닫기"""
+        return self._send_request('POST', 'access/close-door')

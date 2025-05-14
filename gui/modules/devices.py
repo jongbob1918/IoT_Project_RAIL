@@ -4,498 +4,226 @@ from PyQt6.QtGui import *
 from PyQt6.QtCore import *
 from PyQt6 import uic
 import datetime
-import requests
-import json
-import time
+import logging
 
+from modules.base_page import BasePage
 from modules.data_manager import DataManager
+from modules.error_handler import ErrorHandler
 
-class DevicesPage(QWidget):
+# 로깅 설정
+logger = logging.getLogger(__name__)
+
+class DevicesPage(BasePage):
     """장치 관리 페이지 위젯 클래스"""
     
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, data_manager=None):
+        """
+        장치 관리 페이지 초기화
+        
+        Args:
+            parent: 부모 위젯
+            data_manager: 데이터 관리자 객체 (의존성 주입)
+        """
         super().__init__(parent)
+        self.page_name = "장치 관리"  # 기본 클래스 속성 설정
         
         # UI 로드
         uic.loadUi("ui/widgets/devices.ui", self)
         
-        # 데이터 관리자 가져오기
-        self.data_manager = DataManager.get_instance()
+        # 데이터 관리자 설정 (의존성 주입 패턴 적용)
+        self.data_manager = data_manager if data_manager else DataManager.get_instance()
+        self.set_data_manager(self.data_manager)  # 부모 클래스 메서드 호출
         
         # 컨베이어 상태 초기화
         self.conveyor_running = False
-        self.conveyor_status_code = "idle"  # idle, running, paused, error, disconnected
         
         # 분류 박스 재고량 초기화
+        self.initialize_counters()
+        
+        # UI 업데이트 타이머 설정
+        self.setup_update_timer()
+        
+        # 데이터 변경 이벤트 연결
+        self.connect_data_signals()
+        
+        logger.info("장치 관리 페이지 초기화 완료")
+    
+    def initialize_counters(self):
+        """카운터 초기화"""
         self.inventory_counts = {
-            "A": 0,  # 물건(비식품)
-            "B": 0,  # 실온 식품
-            "C": 0,  # 냉장 식품
+            "A": 0,  # 냉동 창고
+            "B": 0,  # 냉장 창고
+            "C": 0,  # 상온 창고
             "error": 0  # 오류 건수
         }
         self.waiting_items = 0
         self.total_processed = 0
-        
-        # API 요청 재시도 설정
-        self.api_retry_count = 2
-        self.api_timeout = 3
-        
-        # 컨베이어 제어 버튼 연결
-        self.btn_start_conveyor.clicked.connect(self.start_conveyor)
-        self.btn_stop_conveyor.clicked.connect(self.stop_conveyor)
-        self.btn_pause_conveyor.clicked.connect(self.pause_conveyor)
-        
-        # UI 업데이트 타이머 설정
+    
+    def setup_update_timer(self):
+        """타이머 설정"""
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.update_ui)
         self.update_timer.start(1000)  # 1초 간격으로 UI 업데이트
-        
-        # 데이터 변경 이벤트 연결
+    
+    def connect_data_signals(self):
+        """데이터 변경 이벤트 연결"""
         self.data_manager.conveyor_status_changed.connect(self.update_conveyor_status)
         self.data_manager.notification_added.connect(self.on_notification)
-        
-        # 소켓 이벤트 핸들러 등록
-        if hasattr(self.data_manager, 'register_event_handler'):
-            self.data_manager.register_event_handler('event', self.handle_standardized_event)
-        
-        # 초기 상태 로그 추가
-        self._add_log_message("장치 페이지 초기화 완료")
-    
-    def _send_control_command(self, action, button_name):
-        """공통 컨베이어 제어 명령 전송 함수"""
-        try:
-            server_conn = self.data_manager._server_connection
-            if not (server_conn and server_conn.is_connected):
-                self._add_log_message(f"서버 연결이 되어있지 않아 {button_name} 명령을 보낼 수 없습니다.")
-                return False
-                
-            retry_count = 0
-            while retry_count <= self.api_retry_count:
-                try:
-                    response = requests.post(
-                        f"{server_conn.api_base_url}/sort/control",
-                        json={"action": action},
-                        timeout=self.api_timeout
-                    )
-                    response.raise_for_status()
-                    
-                    # 로그 추가
-                    self._add_log_message(f"분류기 {button_name} 명령을 전송했습니다.")
-                    return True
-                except requests.exceptions.RequestException as e:
-                    retry_count += 1
-                    if retry_count > self.api_retry_count:
-                        raise e
-                    # 재시도 로그 (마지막 시도가 아닌 경우에만)
-                    self._add_log_message(f"분류기 {button_name} 명령 재시도 중... ({retry_count}/{self.api_retry_count})")
-                    
-        except Exception as e:
-            # 오류 로그 추가
-            self._add_log_message(f"분류기 {button_name} 오류: {str(e)}")
-            return False
-    
-    def start_conveyor(self):
-        """컨베이어 시작 명령 전송"""
-        print("시작 버튼 클릭")
-        try:
-            # API 호출 실행
-            server_conn = self.data_manager._server_connection
-            if server_conn and server_conn.is_connected:
-                response = requests.post(
-                    f"{server_conn.api_base_url}/sort/control",
-                    json={"action": "start"},
-                    timeout=self.api_timeout
-                )
-                
-                # 성공 시 상태 업데이트
-                self.conveyor_status_code = "running"
-                self.update_conveyor_ui()
-                self._add_log_message("분류기 시작 명령을 전송했습니다.")
-            else:
-                self._add_log_message("서버 연결이 되어있지 않아 시작 명령을 보낼 수 없습니다.")
-        except Exception as e:
-            self._add_log_message(f"시작 명령 오류: {str(e)}")
-    
-    def stop_conveyor(self):
-        """컨베이어 정지 명령 전송"""
-        print("정지 버튼 클릭")
-        try:
-            # API 호출 실행
-            server_conn = self.data_manager._server_connection
-            if server_conn and server_conn.is_connected:
-                response = requests.post(
-                    f"{server_conn.api_base_url}/sort/control",
-                    json={"action": "stop"},
-                    timeout=self.api_timeout
-                )
-                
-                # 성공 시 상태 업데이트
-                self.conveyor_status_code = "idle"
-                self.update_conveyor_ui()
-                self._add_log_message("분류기 정지 명령을 전송했습니다.")
-            else:
-                self._add_log_message("서버 연결이 되어있지 않아 정지 명령을 보낼 수 없습니다.")
-        except Exception as e:
-            self._add_log_message(f"정지 명령 오류: {str(e)}")
-    
-    def pause_conveyor(self):
-        """컨베이어 일시정지 명령 전송"""
-        print("일시정지 버튼 클릭")
-        try:
-            # API 호출 실행
-            server_conn = self.data_manager._server_connection
-            if server_conn and server_conn.is_connected:
-                response = requests.post(
-                    f"{server_conn.api_base_url}/sort/control",
-                    json={"action": "pause"},
-                    timeout=self.api_timeout
-                )
-                
-                # 성공 시 상태 업데이트
-                self.conveyor_status_code = "paused"
-                self.update_conveyor_ui()
-                self._add_log_message("분류기 일시정지 명령을 전송했습니다.")
-            else:
-                self._add_log_message("서버 연결이 되어있지 않아 일시정지 명령을 보낼 수 없습니다.")
-        except Exception as e:
-            self._add_log_message(f"일시정지 명령 오류: {str(e)}")
     
     def update_conveyor_status(self):
         """컨베이어 상태 업데이트"""
-        conveyor_status = self.data_manager.get_conveyor_status()
-        
-        if conveyor_status == 1:  # 가동중
-            self.conveyor_status_code = "running"
-        elif conveyor_status == 2:  # 일시정지
-            self.conveyor_status_code = "paused"
-        else:  # 정지
-            self.conveyor_status_code = "idle"
+        try:
+            conveyor_status = self.data_manager.get_conveyor_status()
             
-        self.update_conveyor_ui()
-    
-    def update_conveyor_ui(self):
-        """컨베이어 상태에 따른 UI 업데이트"""
-        print(f"UI 업데이트: 상태 = {self.conveyor_status_code}")
-        
-        if self.conveyor_status_code == "running":
-            self.conveyor_status.setText("작동중")
-            self.conveyor_status.setStyleSheet("background-color: #4CAF50; color: white; border-radius: 3px; padding: 2px;")
-            self.conveyor_running = True
-            # 시작 버튼 비활성화, 정지/일시정지 버튼 활성화
-            self.btn_start_conveyor.setEnabled(False)
-            self.btn_stop_conveyor.setEnabled(True)
-            self.btn_pause_conveyor.setEnabled(True)
-        elif self.conveyor_status_code == "paused":
-            self.conveyor_status.setText("일시정지")
-            self.conveyor_status.setStyleSheet("background-color: #FFC107; color: black; border-radius: 3px; padding: 2px;")
-            self.conveyor_running = False
-            # 시작 버튼 활성화, 일시정지 버튼 비활성화, 정지 버튼 활성화
-            self.btn_start_conveyor.setEnabled(True)
-            self.btn_stop_conveyor.setEnabled(True)
-            self.btn_pause_conveyor.setEnabled(False)
-        elif self.conveyor_status_code == "idle":
-            self.conveyor_status.setText("정지")
-            self.conveyor_status.setStyleSheet("background-color: #757575; color: white; border-radius: 3px; padding: 2px;")
-            self.conveyor_running = False
-            # 시작 버튼 활성화, 나머지 비활성화
-            self.btn_start_conveyor.setEnabled(True)
-            self.btn_stop_conveyor.setEnabled(False)
-            self.btn_pause_conveyor.setEnabled(False)
-        elif self.conveyor_status_code == "error":
-            self.conveyor_status.setText("오류")
-            self.conveyor_status.setStyleSheet("background-color: #F44336; color: white; border-radius: 3px; padding: 2px;")
-            self.conveyor_running = False
-            # 모든 버튼 비활성화
-            self.btn_start_conveyor.setEnabled(False)
-            self.btn_stop_conveyor.setEnabled(False)
-            self.btn_pause_conveyor.setEnabled(False)
-        else:  # disconnected
-            self.conveyor_status.setText("연결 안됨")
-            self.conveyor_status.setStyleSheet("background-color: #757575; color: white; border-radius: 3px; padding: 2px;")
-            self.conveyor_running = False
-            # 모든 버튼 비활성화
-            self.btn_start_conveyor.setEnabled(False)
-            self.btn_stop_conveyor.setEnabled(False)
-            self.btn_pause_conveyor.setEnabled(False)
-            self._add_log_message("서버 연결이 필요합니다. 버튼을 사용하려면 먼저 서버에 연결하세요.")
-    
-    def _add_log_message(self, message, highlight=False):
-        """로그 메시지 추가 (중복 코드 제거용)"""
-        current_time = QDateTime.currentDateTime().toString("hh:mm:ss")
-        log_message = f"{current_time} - {message}"
-        
-        # 로그 목록에 추가
-        item = QListWidgetItem(log_message)
-        if highlight:
-            item.setForeground(QColor("#F44336"))  # 강조 표시가 필요한 메시지는 빨간색으로
-            font = item.font()
-            font.setBold(True)
-            item.setFont(font)
-        
-        self.list_logs.insertItem(0, item)
-        
-        # 최대 50개 로그만 유지
-        if self.list_logs.count() > 50:
-            self.list_logs.takeItem(self.list_logs.count() - 1)
+            if conveyor_status == 1:  # 가동중
+                self.conveyor_status.setText("작동중")
+                self.conveyor_status.setStyleSheet("background-color: #4CAF50; color: white; border-radius: 3px; padding: 2px;")
+                self.conveyor_running = True
+            else:  # 정지
+                self.conveyor_status.setText("일시정지")
+                self.conveyor_status.setStyleSheet("background-color: #FFC107; color: black; border-radius: 3px; padding: 2px;")
+                self.conveyor_running = False
+        except Exception as e:
+            logger.error(f"컨베이어 상태 업데이트 오류: {str(e)}")
+            self.show_status_message("컨베이어 상태 업데이트 오류", is_error=True)
     
     def on_notification(self, message):
         """알림 발생 시 처리"""
         # 컨베이어 관련 알림인 경우 로그에 추가
         if "컨베이어" in message or "벨트" in message or "인식" in message or "분류" in message:
-            self._add_log_message(message)
+            current_time = QDateTime.currentDateTime().toString("hh:mm:ss")
+            log_message = f"{current_time} - {message}"
+            self.add_log_message(log_message)
     
-    def handle_standardized_event(self, data):
-        """표준화된 이벤트 처리"""
-        try:
-            # 문자열로 전달된 경우 JSON 파싱
-            if isinstance(data, str):
-                event_data = json.loads(data)
-            else:
-                event_data = data
-                
-            # 이벤트 데이터 추출
-            event_type = event_data.get("type")
-            category = event_data.get("category")
-            action = event_data.get("action")
-            payload = event_data.get("payload", {})
+    def add_log_message(self, message):
+        """로그 목록에 메시지 추가"""
+        if hasattr(self, 'list_logs'):
+            self.list_logs.insertItem(0, message)
             
-            # 분류기 관련 이벤트만 처리
-            if category != "sorter":
-                return
-                
-            # 이벤트 종류에 따른 처리
-            if action == "status_update":
-                self._handle_status_update(payload)
-            elif action == "barcode_scanned":
-                self._handle_barcode_scanned(payload)
-            elif action == "error":
-                self._handle_error_event(payload)
-                
-        except Exception as e:
-            print(f"이벤트 처리 오류: {str(e)}")
-    
-    def _handle_status_update(self, payload):
-        """상태 업데이트 이벤트 처리"""
-        # 작동 상태 업데이트
-        is_running = payload.get("is_running", False)
-        self.conveyor_running = is_running
-        self.conveyor_status_code = "running" if is_running else "idle"
-        
-        # 대기 물품 및 처리 물품 업데이트
-        self.waiting_items = payload.get("items_waiting", 0)
-        self.total_processed = payload.get("items_processed", 0)
-        
-        # 분류 카운트 업데이트
-        sort_counts = payload.get("sort_counts", {})
-        if sort_counts:
-            self.inventory_counts.update(sort_counts)
-            
-            # UI 라벨도 직접 업데이트
-            if "A" in sort_counts:
-                self.inventory_A.setText(f"{sort_counts['A']}개")
-            if "B" in sort_counts:
-                self.inventory_B.setText(f"{sort_counts['B']}개")
-            if "C" in sort_counts:
-                self.inventory_C.setText(f"{sort_counts['C']}개")
-            if "E" in sort_counts:
-                self.inventory_error.setText(f"{sort_counts['E']}개")
-                
-                # 오류는 항상 빨간색
-                if sort_counts['E'] > 0:
-                    self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
-                else:
-                    self.inventory_error.setStyleSheet("color: #757575;")
-        
-        # 대기/처리 아이템 UI 업데이트
-        self.inventory_waiting.setText(f"{self.waiting_items}개")
-        self.inventory_waiting_2.setText(f"{self.total_processed}개")
-        
-        # UI 업데이트
-        self.update_conveyor_ui()
-    
-    def _handle_barcode_scanned(self, payload):
-        """바코드 스캔 이벤트 처리"""
-        barcode = payload.get("barcode", "")
-        category = payload.get("category", "")  # 서버가 이미 결정한 카테고리
-        timestamp = payload.get("timestamp", 0)
-        
-        # 바코드가 없으면 처리 중단
-        if not barcode:
-            self._add_log_message("바코드 데이터 없음", True)
-            return
-            
-        try:
-            # 서버 연결 확인
-            server_conn = self.data_manager._server_connection
-            if not (server_conn and server_conn.is_connected):
-                self._add_log_message("서버 연결이 되어있지 않아 바코드 처리를 할 수 없습니다.", True)
-                return
-                
-            # 서버의 바코드 처리 API 호출
-            response = requests.post(
-                f"{server_conn.api_base_url}/sort/barcode",
-                json={
-                    "barcode": barcode,
-                    "category": category  # 카테고리가 이미 있으면 전달, 없으면 서버에서 결정
-                },
-                timeout=self.api_timeout
-            )
-            
-            if response.status_code == 200:
-                # 성공 응답 처리
-                result = response.json()
-                category = result.get("category", "")
-                
-                if category in ["A", "B", "C"]:
-                    log_message = f"QR {barcode} 인식됨, 창고 {category}(으)로 분류"
-                    self._add_log_message(f"분류 명령 전송 성공: {barcode} -> {category}")
-                else:
-                    log_message = f"QR {barcode} 인식 실패, 분류 오류"
-                    self._add_log_message("분류 카테고리 결정 실패", True)
-                    
-                # 로그 추가
-                self._add_log_message(log_message)
-                
-                # 재고 카운트 직접 업데이트
-                if category in ["A", "B", "C"]:
-                    self.inventory_counts[category] += 1
-                    
-                    # UI 업데이트
-                    if category == "A":
-                        self.inventory_A.setText(f"{self.inventory_counts["A"]}개")
-                    elif category == "B":
-                        self.inventory_B.setText(f"{self.inventory_counts["B"]}개")
-                    elif category == "C":
-                        self.inventory_C.setText(f"{self.inventory_counts["C"]}개")
-                elif category == "E":
-                    self.inventory_counts["error"] += 1
-                    self.inventory_error.setText(f"{self.inventory_counts["error"]}개")
-                    self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
-            else:
-                # 오류 응답 처리
-                self._add_log_message(f"바코드 처리 실패: HTTP {response.status_code}", True)
-                
-        except Exception as e:
-            self._add_log_message(f"바코드 처리 중 오류: {str(e)}", True)
-            
-            # 로그 추가
-            self._add_log_message(log_message)
-            
-            # 재고 카운트 직접 업데이트
-            if category in ["A", "B", "C"]:
-                self.inventory_counts[category] += 1
-                
-                # UI 업데이트
-                if category == "A":
-                    self.inventory_A.setText(f"{self.inventory_counts["A"]}개")
-                elif category == "B":
-                    self.inventory_B.setText(f"{self.inventory_counts["B"]}개")
-                elif category == "C":
-                    self.inventory_C.setText(f"{self.inventory_counts["C"]}개")
-            elif category == "E":
-                self.inventory_counts["error"] += 1
-                self.inventory_error.setText(f"{self.inventory_counts["error"]}개")
-                self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
-                
-        except Exception as e:
-            self._add_log_message(f"바코드 처리 중 오류: {str(e)}", True)
-    
-    def _handle_error_event(self, payload):
-        """오류 이벤트 처리"""
-        error_code = payload.get("error_code", "unknown")
-        error_message = payload.get("error_message", "알 수 없는 오류")
-        
-        # 로그 추가 (강조 표시)
-        log_message = f"오류 발생: {error_message} (코드: {error_code})"
-        self._add_log_message(log_message, True)
-        
-        # 대기 물품이 있는 경우 일시정지 상태로, 없는 경우 정지 상태로 설정
-        if self.waiting_items > 0:
-            self.conveyor_status_code = "paused"
-            self._add_log_message("대기 물품이 있어 일시정지 상태로 전환합니다.")
-        else:
-            self.conveyor_status_code = "idle"
-            self._add_log_message("대기 물품이 없어 정지 상태로 전환합니다.")
-            
-        self.update_conveyor_ui()
+            # 최대 50개 로그만 유지
+            if self.list_logs.count() > 50:
+                self.list_logs.takeItem(self.list_logs.count() - 1)
     
     def update_ui(self):
         """UI 요소 업데이트"""
         try:
-            # 서버 연결 객체 가져오기
-            server_conn = self.data_manager._server_connection
-            
-            if server_conn and server_conn.is_connected:
-                # 1초마다 서버에서 최신 데이터 가져오기
-                if int(time.time()) % 1 == 0:
-                    self.request_status_update()
+            # 서버 연결 상태 확인
+            if self.is_server_connected():
+                # 서버에서 최신 데이터 가져오기
+                try:
+                    # 재고 데이터 가져오기
+                    warehouse_data = self.data_manager.get_warehouse_data()
+                    
+                    # 재고 라벨 업데이트
+                    self.inventory_A.setText(f"{warehouse_data['A']['used']}개")
+                    self.inventory_B.setText(f"{warehouse_data['B']['used']}개")
+                    self.inventory_C.setText(f"{warehouse_data['C']['used']}개")
+                    
+                    # 에러 건수는 서버에서 제공하지 않을 경우 0으로 설정
+                    error_count = 0
+                    self.inventory_error.setText(f"{error_count}개")
+                    
+                    # 대기 건수와 총 처리 건수 (서버에서 제공하지 않을 경우 예상 값 사용)
+                    waiting_count = 0  # 서버에서 제공하지 않을 경우 0으로 설정
+                    total_count = sum([warehouse_data[wh]['used'] for wh in ['A', 'B', 'C']])
+                    
+                    self.inventory_waiting.setText(f"{waiting_count}개")
+                    self.inventory_waiting_2.setText(f"{total_count}개")
+                    
+                    # 오류는 항상 빨간색
+                    if error_count > 0:
+                        self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
+                    else:
+                        self.inventory_error.setStyleSheet("color: #757575;")
+                    
+                except Exception as e:
+                    logger.error(f"재고 데이터 가져오기 오류: {str(e)}")
+                    self.handle_data_fetch_error("재고 데이터 가져오기", str(e))
             else:
-                # 연결이 끊어진 경우 UI 업데이트
-                if self.conveyor_status_code != "disconnected":
-                    self.conveyor_status_code = "disconnected"
-                    self.update_conveyor_ui()
+                # 서버 연결이 없는 경우 UI 초기화
+                self.reset_ui_for_disconnection()
         
         except Exception as e:
-            print(f"UI 업데이트 중 오류: {str(e)}")
-    def onConnectionStatusChanged(self, connected):
-        """서버 연결 상태 변경 시 호출되는 메서드"""
-        if connected:
-            # 연결 성공 시 처리
-            self._add_log_message("서버에 연결되었습니다.")
-            
-            # 상태 갱신 요청 - 즉시 여러번 호출하여 확실히 상태 업데이트
-            for _ in range(3):
-                self.request_status_update()
-                time.sleep(0.2)  # 약간의 지연
-            
-            # 연결 상태로 업데이트
-            self.conveyor_status_code = "idle"
-            self.update_conveyor_ui()
-        else:
-            # 연결 실패 시 처리
-            self._add_log_message("서버 연결이 끊어졌습니다.", True)
-            
-            # 연결이 끊어지면 컨베이어는 연결 안됨 상태로 표시
-            self.conveyor_status_code = "disconnected"
-            self.update_conveyor_ui()
-    def request_status_update(self):
-        """서버에 상태 업데이트 요청"""
+            logger.error(f"UI 업데이트 중 오류: {str(e)}")
+            self.show_status_message(f"UI 업데이트 오류: {str(e)}", is_error=True)
+    
+    def reset_ui_for_disconnection(self):
+        """서버 연결이 없을 때 UI 초기화"""
+        self.inventory_A.setText("연결 필요")
+        self.inventory_B.setText("연결 필요")
+        self.inventory_C.setText("연결 필요")
+        self.inventory_error.setText("연결 필요")
+        self.inventory_waiting.setText("연결 필요")
+        self.inventory_waiting_2.setText("연결 필요")
+        
+        # 컨베이어 상태 표시 초기화
+        self.conveyor_status.setText("연결 안됨")
+        self.conveyor_status.setStyleSheet("background-color: #757575; color: white; border-radius: 3px; padding: 2px;")
+    
+    def handleSorterEvent(self, action, payload):
+        """서버로부터 분류기 이벤트 처리 - JSON 스키마에 맞게 수정"""
         try:
-            server_conn = self.data_manager._server_connection
-            if not (server_conn and server_conn.is_connected):
-                return
+            if action == "status_update":
+                is_running = payload.get("is_running", False)
+                self.conveyor_running = is_running
                 
-            response = requests.get(
-                f"{server_conn.api_base_url}/sort/status",
-                timeout=self.api_timeout
-            )
-            response.raise_for_status()
+                # 컨베이어 상태 업데이트 - 작동중 또는 정지 두 가지 상태만 표시
+                if is_running:
+                    self.conveyor_status.setText("작동중")
+                    self.conveyor_status.setStyleSheet("background-color: #4CAF50; color: white; border-radius: 3px; padding: 2px;")
+                else:
+                    self.conveyor_status.setText("정지")
+                    self.conveyor_status.setStyleSheet("background-color: #9E9E9E; color: white; border-radius: 3px; padding: 2px;")
+                
+                logger.debug(f"분류기 상태 업데이트: {'가동중' if is_running else '정지'}")
             
-            # 응답 데이터 처리
-            status_data = response.json()
-            if "status" in status_data:
-                status = status_data["status"]
-                self.conveyor_running = status.get("state") == "running"
-                self.conveyor_status_code = "running" if self.conveyor_running else "idle"
+            elif action == "process_item":
+                item = payload.get("item", {})
+                qr_code = item.get("qr_code", "") 
+                destination = item.get("destination", "")
+                timestamp = payload.get("timestamp", "")
                 
-                self.waiting_items = status.get("items_waiting", 0)
-                self.total_processed = status.get("items_processed", 0)
+                # 로그 메시지 생성 - QR 코드 참조로 통일
+                if destination in ["A", "B", "C"]:
+                    log_message = f"{timestamp} - QR {qr_code} 인식됨, 창고 {destination}으로 분류"
+                else:
+                    log_message = f"{timestamp} - QR {qr_code} 인식 실패. 분류 오류 발생."
                 
-                # 분류 카운트 업데이트
-                sort_counts = status.get("sort_counts", {})
-                if sort_counts:
-                    self.inventory_counts.update(sort_counts)
+                # 로그 목록에 추가
+                self.add_log_message(log_message)
                 
-                # UI 업데이트
-                self.update_conveyor_ui()
-                
-                # 로그 업데이트
-                if status_data.get("logs"):
-                    for log in status_data["logs"]:
-                        barcode = log.get("barcode", "")
-                        category = log.get("category", "")
-                        if barcode and category:
-                            self._handle_barcode_scanned(log)
-            
+                logger.info(f"아이템 처리: {log_message}")
         except Exception as e:
-            print(f"상태 업데이트 요청 오류: {str(e)}")
+            logger.error(f"분류기 이벤트 처리 오류: {str(e)}")
+            self.show_status_message(f"분류기 이벤트 처리 오류: {str(e)}", is_error=True)
+    
+    # === BasePage 메서드 오버라이드 ===
+    def on_server_connected(self):
+        """서버 연결 성공 시 처리 - 기본 클래스 메서드 오버라이드"""
+        current_time = QDateTime.currentDateTime().toString("hh:mm:ss")
+        log_message = f"{current_time} - 서버에 연결되었습니다."
+        self.add_log_message(log_message)
+        logger.info("서버 연결 성공")
+    
+    def on_server_disconnected(self):
+        """서버 연결 실패 시 처리 - 기본 클래스 메서드 오버라이드"""
+        current_time = QDateTime.currentDateTime().toString("hh:mm:ss")
+        log_message = f"{current_time} - 서버 연결이 끊어졌습니다."
+        self.add_log_message(log_message)
+        
+        # 연결이 끊어지면 컨베이어는 정지 상태로 표시
+        self.conveyor_status.setText("연결 안됨")
+        self.conveyor_status.setStyleSheet("background-color: #757575; color: white; border-radius: 3px; padding: 2px;")
+        self.conveyor_running = False
+        
+        # UI 초기화
+        self.reset_ui_for_disconnection()
+        
+        logger.warning("서버 연결 실패")
+    
+    def handle_data_fetch_error(self, context, error_message):
+        """데이터 가져오기 오류 처리"""
+        logger.error(f"{context}: {error_message}")
+        error_log = f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 오류: {context} - {error_message}"
+        self.add_log_message(error_log)
+        ErrorHandler.show_warning_message(context, error_message)
