@@ -93,3 +93,5 @@ class ExpirationItemCustom(QWidget):
         self.setLayout(main_layout)
         
         logger.debug(f"유통기한 아이템 위젯 생성 완료: {self.product_data.get('name', '')}")
+
+    

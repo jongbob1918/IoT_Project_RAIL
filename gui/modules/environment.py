@@ -247,7 +247,8 @@ class EnvironmentPage(BasePage):
                     return
                     
                 try:
-                    # 서버 API 호출
+                    # 서버 API 호출 - API 구조에 맞게 데이터 전송
+                    # PDF에 있는 JSON 구조에 맞게 수정: warehouse와 temperature 키 사용
                     server_conn = self.data_manager._server_connection
                     response = server_conn.set_target_temperature(wh_id, target_temp)
                     
@@ -285,9 +286,10 @@ class EnvironmentPage(BasePage):
     def handleEnvironmentEvent(self, action, payload):
         """서버로부터 환경 이벤트 처리"""
         try:
+            # temperature_update 액션 처리 - PDF의 JSON 구조에 맞게 수정
             if action == "temperature_update" and "warehouse_id" in payload and "current_temp" in payload:
                 wh_id = payload.get("warehouse_id")
-                temperature = payload.get("current_temp")  # current_temp 필드로 변경
+                temperature = payload.get("current_temp")  # current_temp 필드 사용
                 
                 if wh_id in self.warehouses:
                     self.warehouses[wh_id]["current_temp"] = temperature
@@ -327,3 +329,5 @@ class EnvironmentPage(BasePage):
         logger.error(f"{context}: {error_message}")
         self.data_manager.add_notification(f"오류: {context} - {error_message}")
         ErrorHandler.show_warning_message(context, error_message)
+
+    

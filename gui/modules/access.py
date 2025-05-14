@@ -384,3 +384,5 @@ class AccessPage(BasePage):  # BasePage 상속으로 변경
                 self.lbl_status.setStyleSheet("color: blue;")
             else:
                 self.lbl_status.setStyleSheet("")
+
+    

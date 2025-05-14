@@ -3,9 +3,11 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtGui import *
 from PyQt6.QtCore import *
 from PyQt6 import uic
+import logging
 
 from modules.server_connection import ServerConnection
 from modules.data_manager import DataManager
+from modules.error_handler import ErrorHandler  # 오류 처리 모듈 추가
 
 from modules.dashboard import DashboardPage
 from modules.devices import DevicesPage
@@ -14,24 +16,41 @@ from modules.inventory import InventoryPage
 from modules.expiration import ExpirationPage
 from modules.access import AccessPage
 
+# 로깅 설정
+logger = logging.getLogger(__name__)
+
 class WindowClass(QMainWindow):
     # 클래스 변수: 오류 다이얼로그가 표시되었는지 추적
     _reconnect_dialog_shown = False
+    
+    # 상수 정의 - 연결 상태 알림 간격
+    CONNECTION_RETRY_INTERVAL = 30  # 서버 연결 재시도 시간 간격 (초)
 
     def __init__(self):
         super().__init__()
         uic.loadUi("ui/main_window.ui", self)
         self.setWindowTitle("RAIL - 물류 관리 시스템")
+        
+        # 연결 상태 관련 변수 초기화
+        self.last_connection_attempt = 0  # 마지막 연결 시도 시간
+        self.last_reconnect_dialog_time = 0  # 마지막 재연결 다이얼로그 표시 시간
 
-        # 서버 연결 객체와 데이터 관리자 초기화
+        # 상태바에 서버 연결 상태 표시 추가
+        self.server_status_label = QLabel()
+        self.statusBar().addWidget(self.server_status_label)
+        self.server_status_label.setText("서버 연결 상태: 연결 시도 중...")
+
+        # 데이터 관리자 초기화
         self.init_data_manager()
+        
+        # 서버 연결 설정
         self.setup_server_connection()
         
         # 개별 페이지 UI 파일 로드
         self.init_pages()
-      
-        # 서버 연결 시도
-        self.connect_to_server()
+    
+        # 약간의 지연 후 연결 시도
+        QTimer.singleShot(100, self.connect_to_server)
 
         # 대시보드 스타일 설정
         self.setup_ui_styles()
@@ -42,14 +61,12 @@ class WindowClass(QMainWindow):
         # 초기 페이지 설정
         self.stackedWidget.setCurrentWidget(self.page_dashboard)
         self.activate_button(self.btn_dashboard, self.page_dashboard)
-
-        # 상태바에 서버 연결 상태 표시 추가
-        self.server_status_label = QLabel("서버 연결 상태: 연결 시도 중...")
-        self.statusBar().addWidget(self.server_status_label)
-
-        # 서버 연결 시도 - 비동기적으로 처리
-        QTimer.singleShot(100, self.connect_to_server)  # 약간의 지연 후 연결 시도
-            
+        
+        # 자동 재연결 타이머 설정
+        self.reconnect_timer = QTimer(self)
+        self.reconnect_timer.timeout.connect(self.check_reconnect)
+        self.reconnect_timer.start(5000)  # 5초마다 연결 상태 확인
+      
     def init_data_manager(self):
         """데이터 관리자 초기화"""
         self.data_manager = DataManager.get_instance()
@@ -57,7 +74,7 @@ class WindowClass(QMainWindow):
     def setup_server_connection(self):
         """서버 연결 객체 초기화"""
         # config.py 파일의 설정과 일치하도록 서버 호스트 및 포트 설정
-        server_host = "localhost"  # config에서는 0.0.0.0으로 설정되어 있지만 클라이언트에서는 localhost 사용
+        server_host = "192.168.2.2"  # config에서는 127.0.0.1으로 설정
         server_port = 8000         # config의 SERVER_PORT와 일치
         
         # 서버 연결 객체 생성
@@ -74,43 +91,64 @@ class WindowClass(QMainWindow):
     
     def connect_to_server(self):
         """서버에 연결 시도 - 비동기적으로 처리"""
+        # 현재 시간 기록
+        current_time = QDateTime.currentMSecsSinceEpoch() / 1000  # 초 단위 변환
+        self.last_connection_attempt = current_time
+            
         try:
             if hasattr(self, 'server_conn'):
                 # 연결 시도
                 if not self.server_conn.connect_to_server():
                     # 연결 실패 시에도 UI는 계속 표시
-                    print("서버 연결 실패. UI는 제한된 기능으로 계속 실행됩니다.")
+                    logger.warning("서버 연결 실패. UI는 제한된 기능으로 계속 실행됩니다.")
                     self.server_status_label.setText("서버 연결 상태: 연결 안됨")
                     self.server_status_label.setStyleSheet("color: red;")
                     
-                    # 연결 상태 업데이트
-                    self.data_manager.set_offline_mode(True)
+                    # 처음 연결 실패 시에만 다이얼로그 표시
+                    if not self._reconnect_dialog_shown:
+                        self._reconnect_dialog_shown = True
+                        self.show_reconnect_dialog("서버에 연결할 수 없습니다.")
                     
-                    # 자동 재연결 타이머 시작
+                    # 재연결 타이머 시작
                     self.server_conn.start_reconnect_timer()
             else:
-                print("오류: 서버 연결 객체가 초기화되지 않았습니다.")
+                logger.error("오류: 서버 연결 객체가 초기화되지 않았습니다.")
                 self.server_status_label.setText("서버 연결 상태: 초기화 오류")
                 self.server_status_label.setStyleSheet("color: red;")
-                
-                # 연결 상태 업데이트
-                self.data_manager.set_offline_mode(True)
         except Exception as e:
-            print(f"서버 연결 시도 중 오류: {str(e)}")
+            logger.error(f"서버 연결 시도 중 오류: {str(e)}")
             self.server_status_label.setText("서버 연결 상태: 오류")
             self.server_status_label.setStyleSheet("color: red;")
+    
+    def check_reconnect(self):
+        """자동 재연결이 필요한지 확인"""
+        # 이미 연결되어 있으면 재연결 시도 안함
+        if hasattr(self, 'server_conn') and self.server_conn.is_connected:
+            return
             
-            # 연결 상태 업데이트
-            self.data_manager.set_offline_mode(True)   
+        # 현재 시간 확인
+        current_time = QDateTime.currentMSecsSinceEpoch() / 1000  # 초 단위 변환
+        
+        # 마지막 연결 시도 후 일정 시간이 지났는지 확인 (30초)
+        if (current_time - self.last_connection_attempt) > self.CONNECTION_RETRY_INTERVAL:
+            # 마지막 재연결 다이얼로그 표시 후 충분한 시간이 지났으면 다시 다이얼로그 표시 (60초)
+            if (current_time - self.last_reconnect_dialog_time) > 60:
+                # 다이얼로그 표시 여부는 상황에 따라 결정
+                pass
+            
+            # 연결 재시도
+            logger.info("자동 재연결 시도 중...")
+            self.connect_to_server()
             
     def init_pages(self):
         """페이지들 초기화"""
-        self.page_dashboard = DashboardPage()
-        self.page_devices = DevicesPage()
-        self.page_environment = EnvironmentPage()
-        self.page_inventory = InventoryPage()
-        self.page_expiration = ExpirationPage()     
-        self.page_access = AccessPage()       
+        # 데이터 관리자 참조 전달
+        self.page_dashboard = DashboardPage(data_manager=self.data_manager)
+        self.page_devices = DevicesPage(data_manager=self.data_manager)
+        self.page_environment = EnvironmentPage(data_manager=self.data_manager)
+        self.page_inventory = InventoryPage(data_manager=self.data_manager)
+        self.page_expiration = ExpirationPage(data_manager=self.data_manager)     
+        self.page_access = AccessPage(data_manager=self.data_manager)       
 
         # 각 페이지에 서버 연결 상태 변경 이벤트 연결
         self.pages = [self.page_dashboard, self.page_devices, self.page_environment, 
@@ -118,8 +156,8 @@ class WindowClass(QMainWindow):
         
         # 페이지에 연결 상태 변경 이벤트 연결
         for page in self.pages:
-            self.server_conn.connectionStatusChanged.connect(page.onConnectionStatusChanged)
-        
+            if hasattr(page, 'onConnectionStatusChanged'):
+                self.server_conn.connectionStatusChanged.connect(page.onConnectionStatusChanged)
         
         # stackedWidget에 페이지 추가
         self.stackedWidget.addWidget(self.page_dashboard)
@@ -205,8 +243,9 @@ class WindowClass(QMainWindow):
             pass
             
         elif category == "access" and hasattr(self.page_access, "handleAccessEvent"):
-            # 출입 이벤트 처리 (필요시 구현)
-            pass
+            # access 카테고리의 이벤트 처리
+            if hasattr(self.page_access, "handleAccessEvent"):
+                self.page_access.handleAccessEvent(action, payload)
     
     def on_connection_status_changed(self, connected, message):
         """서버 연결 상태 변경 이벤트 핸들러"""
@@ -215,42 +254,49 @@ class WindowClass(QMainWindow):
             if connected:
                 self.server_status_label.setText("서버 연결 상태: 연결됨")
                 self.server_status_label.setStyleSheet("color: green;")
+                self._reconnect_dialog_shown = False  # 연결 성공 시 다이얼로그 표시 플래그 초기화
             else:
-                self.server_status_label.setText(f"서버 연결 상태: {message}")
+                self.server_status_label.setText(f"서버 연결 상태: 연결 안됨")
                 self.server_status_label.setStyleSheet("color: red;")
+                
+                # 디버그용 메시지 (상세 메시지는 UI에 표시하지 않음)
+                logger.error(f"서버 연결 상태 변경: {message}")
         else:
             # 개발자 콘솔에 로깅
-            print(f"서버 연결 상태: {'연결됨' if connected else message}")
+            logger.info(f"서버 연결 상태: {'연결됨' if connected else message}")
         
-        # 각 페이지에 연결 상태 알림
+        # 각 페이지에 연결 상태 알림 (상세 구현은 페이지에서 처리)
         self.notify_connection_to_pages(connected)
         
         # 데이터 관리자에 서버 연결 상태 업데이트
         self.data_manager._server_connected = connected
         
-        # 연결 실패 시 재연결 다이얼로그 표시 (API 호출 오류가 아닌 경우)
+        # 연결 실패 시 재연결 다이얼로그 표시 (일정 조건 충족 시)
         if not connected and not message.startswith("서버 요청 오류") and not message.startswith("재연결 시도 횟수 초과"):
-            self.show_reconnect_dialog(message)
+            # 마지막 다이얼로그 표시 이후 충분한 시간이 지났는지 확인 (60초)
+            current_time = QDateTime.currentMSecsSinceEpoch() / 1000  # 초 단위 변환
+            if (current_time - self.last_reconnect_dialog_time) > 60:
+                # 최초 연결 시도 시에만 다이얼로그 표시
+                if not self._reconnect_dialog_shown:
+                    self.show_reconnect_dialog(message)
+                    self._reconnect_dialog_shown = True
     
     def notify_connection_to_pages(self, connected):
         """각 페이지에 연결 상태 변경 알림"""
-        message = "연결됨" if connected else "연결 안됨"
-        
-        # 데이터 관리자에 오프라인 모드 설정
-        if not connected:
-            self.data_manager.set_offline_mode(True)
-        else:
-            self.data_manager.set_offline_mode(False)
-            
         # 로그에 기록
-        print(f"서버 연결 상태 변경: {message}")
+        logger.info(f"서버 연결 상태 변경: {'연결됨' if connected else '연결 안됨'}")
     
     def show_reconnect_dialog(self, error_message):
-        """서버 재연결 다이얼로그 표시"""
+        """서버 재연결 다이얼로그 표시 - 제한적으로 표시"""
+        # 현재 시간 기록 (중복 다이얼로그 방지)
+        current_time = QDateTime.currentMSecsSinceEpoch() / 1000  # 초 단위 변환
+        self.last_reconnect_dialog_time = current_time
+        
+        # 사용자에게 간결한 메시지 표시
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Icon.Warning)
         msgBox.setWindowTitle("서버 연결 오류")
-        msgBox.setText(f"서버 연결에 문제가 발생했습니다:\n{error_message}")
+        msgBox.setText("서버 연결에 문제가 발생했습니다.")
         msgBox.setInformativeText("서버에 재연결을 시도하시겠습니까?")
         msgBox.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         msgBox.setDefaultButton(QMessageBox.StandardButton.Yes)
@@ -259,8 +305,11 @@ class WindowClass(QMainWindow):
             # 재연결 시도 - 자동 재연결 타이머 시작
             if hasattr(self, 'server_conn'):
                 self.server_conn.start_reconnect_timer()
+                # 재연결 다이얼로그가 표시되었다는 플래그 설정
+                self._reconnect_dialog_shown = True
             else:
-                print("오류: 서버 연결 객체가 초기화되지 않았습니다.")
+                logger.error("오류: 서버 연결 객체가 초기화되지 않았습니다.")
+                ErrorHandler.show_error_message("연결 오류", "서버 연결 객체가 초기화되지 않았습니다.")
 
     # 사이드바 버튼 클릭 시 배경 활성화
     def activate_button(self, clicked_button, target_page):

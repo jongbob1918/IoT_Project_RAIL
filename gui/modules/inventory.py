@@ -146,6 +146,9 @@ class InventoryPage(BasePage):
         # 차트 프레임 초기화
         self.init_chart_frame()
         
+        # 프로그레스 바 초기화
+        self.init_progress_bars()
+        
         # 버튼 이벤트 연결
         self.connect_buttons()
         
@@ -161,12 +164,16 @@ class InventoryPage(BasePage):
         # 초기 서버 연결 상태 표시 업데이트
         self.update_connection_status()
         
+        # 초기 창고 데이터 업데이트
+        self.update_warehouse_data()
+        
         logger.info("재고 관리 페이지 초기화 완료")
     
     def setup_update_timer(self):
         """타이머 설정"""
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.update_connection_status)
+        self.update_timer.timeout.connect(self.update_warehouse_data)
         self.update_timer.start(5000)  # 5초마다 업데이트
     
     def connect_buttons(self):
@@ -189,28 +196,88 @@ class InventoryPage(BasePage):
         """차트 프레임 초기화"""
         try:
             # 차트 프레임이 UI에 있는지 확인
-            if hasattr(self, 'chartframe'):
+            if hasattr(self, 'chartFrame'):
                 # 기존 레이아웃 제거
-                if self.chartframe.layout():
+                if self.chartFrame.layout():
                     # 기존 레이아웃의 모든 아이템 제거
-                    while self.chartframe.layout().count():
-                        item = self.chartframe.layout().takeAt(0)
+                    while self.chartFrame.layout().count():
+                        item = self.chartFrame.layout().takeAt(0)
                         widget = item.widget()
                         if widget:
                             widget.deleteLater()
                     
                     # 기존 레이아웃 제거
-                    QWidget().setLayout(self.chartframe.layout())
+                    QWidget().setLayout(self.chartFrame.layout())
                 
                 # 새 차트 프레임 생성 및 추가
-                self.chart_widget = ChartFrame(self.chartframe, self.data_manager)
-                layout = QVBoxLayout(self.chartframe)
+                self.chart_widget = ChartFrame(self.chartFrame, self.data_manager)
+                layout = QVBoxLayout(self.chartFrame)
                 layout.setContentsMargins(0, 0, 0, 0)
                 layout.addWidget(self.chart_widget)
-                self.chartframe.setLayout(layout)
+                self.chartFrame.setLayout(layout)
         except Exception as e:
             logger.error(f"차트 프레임 초기화 오류: {str(e)}")
             self.show_status_message("차트 프레임 초기화 오류", is_error=True)
+
+    def init_progress_bars(self):
+        """프로그레스 바 초기화"""
+        # 프로그레스 바 초기값 설정
+        if hasattr(self, 'progressBar_A'):
+            self.progressBar_A.setValue(0)
+        if hasattr(self, 'progressBar_B'):
+            self.progressBar_B.setValue(0)
+        if hasattr(self, 'progressBar_C'):
+            self.progressBar_C.setValue(0)
+            
+        # 레이블 초기값 설정
+        if hasattr(self, 'label_a_count'):
+            self.label_a_count.setText("0개 (0%)")
+        if hasattr(self, 'label_b_count'):
+            self.label_b_count.setText("0개 (0%)")
+        if hasattr(self, 'label_c_count'):
+            self.label_c_count.setText("0개 (0%)")
+        if hasattr(self, 'label_total_count'):
+            self.label_total_count.setText("0개")
+    
+    def update_warehouse_data(self):
+        """창고 데이터 업데이트 (프로그레스 바 및 레이블)"""
+        try:
+            if not self.is_server_connected():
+                return
+                
+            # 창고 데이터 가져오기
+            warehouse_data = self.data_manager.get_warehouse_data()
+            
+            # 총 상품 수 계산
+            total_items = 0
+            
+            # 각 창고별 데이터 업데이트
+            for wh_id in ['A', 'B', 'C']:
+                wh_data = warehouse_data.get(wh_id, {})
+                used = wh_data.get("used", 0)
+                capacity = wh_data.get("capacity", 100)
+                
+                # 프로그레스 바 업데이트
+                progress_bar = getattr(self, f'progressBar_{wh_id}', None)
+                if progress_bar:
+                    percentage = int((used / capacity) * 100) if capacity > 0 else 0
+                    progress_bar.setValue(percentage)
+                
+                # 레이블 업데이트
+                label_count = getattr(self, f'label_{wh_id.lower()}_count', None)
+                if label_count:
+                    label_count.setText(f"{used}개 ({percentage}%)")
+                
+                # 총 개수에 추가
+                total_items += used
+            
+            # 총 물품 수 업데이트
+            if hasattr(self, 'label_total_count'):
+                self.label_total_count.setText(f"{total_items}개")
+                
+            logger.debug("창고 데이터 업데이트 완료")
+        except Exception as e:
+            logger.error(f"창고 데이터 업데이트 오류: {str(e)}")
     
     def show_inventory_list(self):
         """재고 목록 팝업 표시"""
@@ -247,12 +314,18 @@ class InventoryPage(BasePage):
             # 차트 업데이트
             if hasattr(self, 'chart_widget'):
                 self.chart_widget.update_chart()
+            
+            # 창고 데이터 업데이트
+            self.update_warehouse_data()
     
     def on_inventory_changed(self):
         """재고 데이터 변경 시 처리"""
         # 차트 업데이트
         if hasattr(self, 'chart_widget'):
             self.chart_widget.update_chart()
+        
+        # 창고 데이터 업데이트
+        self.update_warehouse_data()
     
     # === BasePage 메서드 오버라이드 ===
     def on_server_connected(self):
@@ -264,6 +337,9 @@ class InventoryPage(BasePage):
         # 차트 업데이트
         if hasattr(self, 'chart_widget'):
             self.chart_widget.update_chart()
+        
+        # 창고 데이터 업데이트
+        self.update_warehouse_data()
         
         self.show_status_message("서버 연결 성공", is_success=True)
         logger.info("서버 연결 성공")
@@ -316,7 +392,7 @@ class InventoryListDialog(QDialog):
         # 검색 필드
         search_label = QLabel("검색:")
         self.input_search = QLineEdit()
-        self.input_search.setPlaceholderText("상품명 또는 SKU 검색")
+        self.input_search.setPlaceholderText("상품명 또는 ID 검색")
         self.btn_search = QPushButton("검색")
         self.btn_search.clicked.connect(self.apply_search_filter)
         
@@ -407,7 +483,7 @@ class InventoryListDialog(QDialog):
         """테이블 위젯 설정"""
         self.table_inventory = QTableWidget()
         self.table_inventory.setColumnCount(5)
-        self.table_inventory.setHorizontalHeaderLabels(["상품명", "SKU", "창고", "입고일", "수량"])
+        self.table_inventory.setHorizontalHeaderLabels(["상품아이디", "상품명", "입고일", "창고", "수량"])
         self.table_inventory.setAlternatingRowColors(True)
         self.table_inventory.setStyleSheet("""
             QTableWidget {
@@ -423,10 +499,10 @@ class InventoryListDialog(QDialog):
         """)
         
         # 칼럼 너비 설정
-        self.table_inventory.setColumnWidth(0, 200)  # 상품명
-        self.table_inventory.setColumnWidth(1, 120)  # SKU
-        self.table_inventory.setColumnWidth(2, 80)   # 창고
-        self.table_inventory.setColumnWidth(3, 120)  # 입고일
+        self.table_inventory.setColumnWidth(0, 120)  # 상품아이디
+        self.table_inventory.setColumnWidth(1, 200)  # 상품명
+        self.table_inventory.setColumnWidth(2, 120)  # 입고일
+        self.table_inventory.setColumnWidth(3, 80)   # 창고
         self.table_inventory.setColumnWidth(4, 80)   # 수량
     
     def fetch_inventory_data(self):
@@ -592,12 +668,12 @@ class InventoryListDialog(QDialog):
                 row = self.table_inventory.rowCount()
                 self.table_inventory.insertRow(row)
                 
-                # 데이터 설정 (ID와 위치 칼럼 제거)
-                self.table_inventory.setItem(row, 0, QTableWidgetItem(item.get("product_name", "")))
-                self.table_inventory.setItem(row, 1, QTableWidgetItem(item.get("sku", "")))
-                self.table_inventory.setItem(row, 2, QTableWidgetItem(item.get("warehouse", "")))
-                self.table_inventory.setItem(row, 3, QTableWidgetItem(item.get("received_date", "")))
-                self.table_inventory.setItem(row, 4, QTableWidgetItem(str(item.get("quantity", 0))))
+                # 데이터 설정 (순서 변경됨)
+                self.table_inventory.setItem(row, 0, QTableWidgetItem(item.get("sku", "")))           # 상품아이디
+                self.table_inventory.setItem(row, 1, QTableWidgetItem(item.get("product_name", "")))  # 상품명
+                self.table_inventory.setItem(row, 2, QTableWidgetItem(item.get("received_date", ""))) # 입고일
+                self.table_inventory.setItem(row, 3, QTableWidgetItem(item.get("warehouse", "")))     # 창고
+                self.table_inventory.setItem(row, 4, QTableWidgetItem(str(item.get("quantity", 0))))  # 수량
                 
                 # 행 색상 설정 (조건에 따라)
                 if item.get("is_expiring_soon", False):
@@ -629,3 +705,5 @@ class InventoryListDialog(QDialog):
             self.current_page += 1
             self.update_pagination()
             self.update_table()
+
+            
