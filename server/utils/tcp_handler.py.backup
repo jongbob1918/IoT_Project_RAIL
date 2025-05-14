@@ -369,7 +369,7 @@ class TCPHandler:
                 logger.error(f"헬스체크 중 오류: {str(e)}")
     
     # ==== 비활성 클라이언트 정리 ====
-    def _cleanup_inactive_clients(self, timeout: int = 600):
+    def _cleanup_inactive_clients(self, timeout: int = 300):
         """지정 시간 동안 활동이 없는 클라이언트를 제거합니다."""
         current_time = time.time()
         inactive_clients = []

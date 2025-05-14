@@ -9,11 +9,10 @@ from api.inventory_api import bp as inventory_bp
 from api.env_api import bp as env_bp
 from api.access_api import bp as access_bp
 from api.expiry_api import bp as expiry_bp
-from controllers.system_controller import get_system_status
-from controllers.sort.sort_controller import SortController
+from utils.system import SystemMonitor
+from controllers.sort_controller import SortController
 from utils.tcp_handler import TCPHandler
 from utils.multi_tcp_handler import MultiTCPHandler
-from env_temp_scheduler import EnvTempScheduler  # 환경 제어 온도 스케줄러 임포트
 from api import set_controller, register_controller  # 컨트롤러 관리 함수 임포트
 try:
     from utils.tcp_debug_helper import *
@@ -108,16 +107,6 @@ else:
 # TCP 서버 시작
 tcp_handler.start()
 
-# 환경 제어 온도 스케줄러 초기화 및 시작
-env_temp_scheduler = EnvTempScheduler(tcp_handler)
-env_temp_scheduler.start()
-logger.info("환경 제어 온도 스케줄러 시작됨 - 10초마다 온도 설정 명령 전송")
-
-# API에 스케줄러 등록
-from api.env_api import register_temp_scheduler
-register_temp_scheduler(env_temp_scheduler)
-logger.info("API에 환경 제어 온도 스케줄러 등록됨")
-
 # 컨트롤러 초기화 함수
 def init_controllers():
     """모든 컨트롤러를 초기화하고 등록합니다."""
@@ -170,7 +159,8 @@ app.register_blueprint(expiry_bp, url_prefix='/api/expiry')
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
-    return jsonify(get_system_status())
+    system_monitor = SystemMonitor()
+    return jsonify(system_monitor.get_system_status())
 
 @app.errorhandler(404)
 def not_found_error(error):
@@ -185,7 +175,6 @@ def internal_error(error):
 def shutdown():
     """서버 종료 시 정리 작업"""
     tcp_handler.stop()
-    env_temp_scheduler.stop()  # 온도 스케줄러 정지
     logger.info("==== 서버 종료 ====")
 
 if __name__ == '__main__':

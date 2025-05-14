@@ -4,12 +4,6 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 class InventoryController:
-    """재고 관리 컨트롤러 클래스
-    
-    재고 관리 시스템의 비즈니스 로직을 처리하는 클래스입니다.
-    재고 물품 조회, 창고별 배치 관리 등의 기능을 제공합니다.
-    """
-    
     def __init__(self, tcp_handler, websocket_manager, db_helper=None):
         """재고 관리 컨트롤러 초기화
         

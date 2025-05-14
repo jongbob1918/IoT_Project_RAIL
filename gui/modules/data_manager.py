@@ -147,6 +147,21 @@ class DataManager(QObject):
                     return True
                 else:
                     # 재연결 시도
+                    try:
+                        # 서버 상태 확인
+                        if hasattr(self._server_connection, 'api_base_url'):
+                            url = f"{self._server_connection.api_base_url}/status"
+                            response = requests.get(url, timeout=2)
+                            if response.status_code == 200:
+                                self._server_connection.is_connected = True
+                                self._server_connected = True
+                                self.notification_added.emit("서버 연결 복구됨")
+                                # 연결 상태 변경 시그널 발생
+                                self.conveyor_status_changed.emit()
+                                return True
+                    except Exception as e:
+                        logger.warning(f"재연결 시도 중 오류: {str(e)}")
+                        
                     self._server_connected = False
                     return False
             
@@ -154,17 +169,20 @@ class DataManager(QObject):
             try:
                 # 서버 상태 확인
                 url = f"{SERVER_BASE_URL}/status"
+                response = requests.get(url, timeout=2)
+                if response.status_code == 200:
+                    self._server_connected = True
+                    self.notification_added.emit("서버 연결 성공")
+                    # 연결 상태 변경 시그널 발생
+                    self.conveyor_status_changed.emit()
+                    return True
                 
-                # 실제 환경에서 사용할 코드
-                # response = requests.get(url, timeout=2)
-                # if response.status_code == 200:
-                #     self._server_connected = True
-                #     self.notification_added.emit("서버 연결 성공")
-                #     return True
-                
-                # 테스트용 코드 (항상 연결 실패)
+                # 실패한 경우
                 self._server_connected = False
+                # 연결 실패 시그널 발생
+                self.conveyor_status_changed.emit()
                 return False
+                
             except Exception as e:
                 logger.error(f"서버 연결 시도 중 오류: {str(e)}")
                 self._server_connected = False

@@ -217,7 +217,6 @@ class DevicesPage(QWidget):
             self.btn_start_conveyor.setEnabled(False)
             self.btn_stop_conveyor.setEnabled(False)
             self.btn_pause_conveyor.setEnabled(False)
-            self._add_log_message("서버 연결이 필요합니다. 버튼을 사용하려면 먼저 서버에 연결하세요.")
     
     def _add_log_message(self, message, highlight=False):
         """로그 메시지 추가 (중복 코드 제거용)"""
@@ -316,89 +315,25 @@ class DevicesPage(QWidget):
     def _handle_barcode_scanned(self, payload):
         """바코드 스캔 이벤트 처리"""
         barcode = payload.get("barcode", "")
-        category = payload.get("category", "")  # 서버가 이미 결정한 카테고리
+        category = payload.get("category", "")
         timestamp = payload.get("timestamp", 0)
         
-        # 바코드가 없으면 처리 중단
-        if not barcode:
-            self._add_log_message("바코드 데이터 없음", True)
-            return
-            
-        try:
-            # 서버 연결 확인
-            server_conn = self.data_manager._server_connection
-            if not (server_conn and server_conn.is_connected):
-                self._add_log_message("서버 연결이 되어있지 않아 바코드 처리를 할 수 없습니다.", True)
-                return
-                
-            # 서버의 바코드 처리 API 호출
-            response = requests.post(
-                f"{server_conn.api_base_url}/sort/barcode",
-                json={
-                    "barcode": barcode,
-                    "category": category  # 카테고리가 이미 있으면 전달, 없으면 서버에서 결정
-                },
-                timeout=self.api_timeout
-            )
-            
-            if response.status_code == 200:
-                # 성공 응답 처리
-                result = response.json()
-                category = result.get("category", "")
-                
-                if category in ["A", "B", "C"]:
-                    log_message = f"QR {barcode} 인식됨, 창고 {category}(으)로 분류"
-                    self._add_log_message(f"분류 명령 전송 성공: {barcode} -> {category}")
-                else:
-                    log_message = f"QR {barcode} 인식 실패, 분류 오류"
-                    self._add_log_message("분류 카테고리 결정 실패", True)
-                    
-                # 로그 추가
-                self._add_log_message(log_message)
-                
-                # 재고 카운트 직접 업데이트
-                if category in ["A", "B", "C"]:
-                    self.inventory_counts[category] += 1
-                    
-                    # UI 업데이트
-                    if category == "A":
-                        self.inventory_A.setText(f"{self.inventory_counts["A"]}개")
-                    elif category == "B":
-                        self.inventory_B.setText(f"{self.inventory_counts["B"]}개")
-                    elif category == "C":
-                        self.inventory_C.setText(f"{self.inventory_counts["C"]}개")
-                elif category == "E":
-                    self.inventory_counts["error"] += 1
-                    self.inventory_error.setText(f"{self.inventory_counts["error"]}개")
-                    self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
+        # 타임스탬프 변환
+        if isinstance(timestamp, (int, float)):
+            dt = QDateTime.fromSecsSinceEpoch(int(timestamp))
+            timestamp_str = dt.toString("hh:mm:ss")
+        else:
+            timestamp_str = QDateTime.currentDateTime().toString("hh:mm:ss")
+        
+        # 로그 메시지 생성
+        if barcode:
+            if category in ["A", "B", "C"]:
+                log_message = f"QR {barcode} 인식됨, 창고 {category}(으)로 분류"
             else:
-                # 오류 응답 처리
-                self._add_log_message(f"바코드 처리 실패: HTTP {response.status_code}", True)
+                log_message = f"QR {barcode} 인식 실패, 분류 오류"
                 
-        except Exception as e:
-            self._add_log_message(f"바코드 처리 중 오류: {str(e)}", True)
-            
             # 로그 추가
             self._add_log_message(log_message)
-            
-            # 재고 카운트 직접 업데이트
-            if category in ["A", "B", "C"]:
-                self.inventory_counts[category] += 1
-                
-                # UI 업데이트
-                if category == "A":
-                    self.inventory_A.setText(f"{self.inventory_counts["A"]}개")
-                elif category == "B":
-                    self.inventory_B.setText(f"{self.inventory_counts["B"]}개")
-                elif category == "C":
-                    self.inventory_C.setText(f"{self.inventory_counts["C"]}개")
-            elif category == "E":
-                self.inventory_counts["error"] += 1
-                self.inventory_error.setText(f"{self.inventory_counts["error"]}개")
-                self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
-                
-        except Exception as e:
-            self._add_log_message(f"바코드 처리 중 오류: {str(e)}", True)
     
     def _handle_error_event(self, payload):
         """오류 이벤트 처리"""
@@ -426,8 +361,8 @@ class DevicesPage(QWidget):
             server_conn = self.data_manager._server_connection
             
             if server_conn and server_conn.is_connected:
-                # 1초마다 서버에서 최신 데이터 가져오기
-                if int(time.time()) % 1 == 0:
+                # 5초마다 서버에서 최신 데이터 가져오기
+                if int(time.time()) % 5 == 0:
                     self.request_status_update()
             else:
                 # 연결이 끊어진 경우 UI 업데이트
@@ -437,20 +372,15 @@ class DevicesPage(QWidget):
         
         except Exception as e:
             print(f"UI 업데이트 중 오류: {str(e)}")
+    
     def onConnectionStatusChanged(self, connected):
         """서버 연결 상태 변경 시 호출되는 메서드"""
         if connected:
             # 연결 성공 시 처리
             self._add_log_message("서버에 연결되었습니다.")
             
-            # 상태 갱신 요청 - 즉시 여러번 호출하여 확실히 상태 업데이트
-            for _ in range(3):
-                self.request_status_update()
-                time.sleep(0.2)  # 약간의 지연
-            
-            # 연결 상태로 업데이트
-            self.conveyor_status_code = "idle"
-            self.update_conveyor_ui()
+            # 상태 갱신 요청
+            self.request_status_update()
         else:
             # 연결 실패 시 처리
             self._add_log_message("서버 연결이 끊어졌습니다.", True)
@@ -458,6 +388,7 @@ class DevicesPage(QWidget):
             # 연결이 끊어지면 컨베이어는 연결 안됨 상태로 표시
             self.conveyor_status_code = "disconnected"
             self.update_conveyor_ui()
+    
     def request_status_update(self):
         """서버에 상태 업데이트 요청"""
         try:

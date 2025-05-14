@@ -135,6 +135,54 @@
      <string>상태:</string>
     </property>
    </widget>
+   <widget class="QPushButton" name="btn_start_conveyor">
+    <property name="geometry">
+     <rect>
+      <x>210</x>
+      <y>120</y>
+      <width>120</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>시작</string>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: #4CAF50; color: white; border-radius: 3px;</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_stop_conveyor">
+    <property name="geometry">
+     <rect>
+      <x>340</x>
+      <y>120</y>
+      <width>120</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>정지</string>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: #F44336; color: white; border-radius: 3px;</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="btn_pause_conveyor">
+    <property name="geometry">
+     <rect>
+      <x>470</x>
+      <y>120</y>
+      <width>120</width>
+      <height>30</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>일시정지</string>
+    </property>
+    <property name="styleSheet">
+     <string notr="true">background-color: #FFC107; color: black; border-radius: 3px;</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QFrame" name="frame_3">
    <property name="geometry">

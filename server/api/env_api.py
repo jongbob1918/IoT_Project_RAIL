@@ -8,14 +8,6 @@ from utils.middleware import validate_request
 bp = Blueprint('env_api', __name__)
 logger = logging.getLogger("api.environment")
 
-# 외부에서 스케줄러 인스턴스를 저장할 변수
-_temp_scheduler = None
-
-def register_temp_scheduler(scheduler):
-    """온도 스케줄러 인스턴스 등록"""
-    global _temp_scheduler
-    _temp_scheduler = scheduler
-
 def get_env_controller():
     """환경 제어 컨트롤러를 가져옵니다."""
     # 새로운 방식으로 시도
@@ -135,10 +127,6 @@ def set_temperature():
     
     # 명령 전송
     success = env_controller.set_temperature(warehouse, temperature)
-    
-    # 스케줄러의 목표 온도도 업데이트
-    if success and _temp_scheduler:
-        _temp_scheduler.update_target_temp(warehouse, temperature)
     
     if success:
         return jsonify({

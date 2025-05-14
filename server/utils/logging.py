@@ -1,10 +1,12 @@
 import os
+import time
 import logging
 from logging.handlers import RotatingFileHandler
 from config import LOG_LEVEL, LOG_FILE, LOG_MAX_SIZE, LOG_BACKUP_COUNT
 
-# ==== 로거거를 설정하고 반환. 동일한 이름의 로거가 이미 설정되어 있다면 중복 설정방지 ====
+# ==== 로거 설정 함수 (기존 코드 유지) ====
 def setup_logger(name: str = 'server') -> logging.Logger:
+    """로거를 설정하고 반환합니다."""
     
     # 로거 인스턴스 생성 및 레벨 설정
     logger = logging.getLogger(name)
@@ -52,3 +54,104 @@ def setup_logger(name: str = 'server') -> logging.Logger:
         logger.addHandler(console_handler)
 
     return logger
+
+
+# ==== 새로운 유틸리티 함수들 ====
+
+def emit_event(socketio, event_name, data):
+    """소켓 이벤트를 발송합니다.
+    
+    Args:
+        socketio: SocketIO 인스턴스
+        event_name: 이벤트 이름
+        data: 이벤트 데이터
+        
+    Returns:
+        bool: 발송 성공 여부
+    """
+    if not socketio:
+        return False
+        
+    try:
+        event_data = {
+            "type": "event",
+            "name": event_name,
+            "data": data,
+            "timestamp": int(time.time())
+        }
+        
+        socketio.emit(event_name, event_data)
+        return True
+    except Exception as e:
+        logger = logging.getLogger('utils')
+        logger.error(f"이벤트 발송 오류: {str(e)}")
+        return False
+
+
+def send_command(tcp_handler, device, command):
+    """장치에 명령을 전송합니다.
+    
+    Args:
+        tcp_handler: TCP 통신 핸들러
+        device: 장치 식별자 
+        command: 전송할 명령어
+        
+    Returns:
+        bool: 전송 성공 여부
+    """
+    if not tcp_handler:
+        return False
+        
+    try:
+        success = tcp_handler.send_message(device, command)
+        if not success:
+            logger = logging.getLogger('utils')
+            logger.error(f"명령 전송 실패: {device}, {command}")
+        return success
+    except Exception as e:
+        logger = logging.getLogger('utils')
+        logger.error(f"명령 전송 오류: {str(e)}")
+        return False
+
+
+def parse_data(data_str, separator=';'):
+    """데이터 문자열을 파싱합니다.
+    
+    Args:
+        data_str: 파싱할 데이터 문자열
+        separator: 구분자 (기본값: ';')
+        
+    Returns:
+        list: 파싱된 데이터 목록
+    """
+    if not data_str:
+        return []
+        
+    try:
+        return [item.strip() for item in data_str.split(separator)]
+    except Exception as e:
+        logger = logging.getLogger('utils')
+        logger.error(f"데이터 파싱 오류: {str(e)}")
+        return []
+
+
+def get_system_info():
+    """시스템 기본 정보를 반환합니다.
+    
+    Returns:
+        dict: 시스템 정보
+    """
+    import platform
+    import psutil
+    
+    try:
+        return {
+            "os": platform.platform(),
+            "python": platform.python_version(),
+            "cpu_usage": psutil.cpu_percent(),
+            "memory_usage": psutil.virtual_memory().percent
+        }
+    except Exception as e:
+        logger = logging.getLogger('utils')
+        logger.error(f"시스템 정보 조회 오류: {str(e)}")
+        return {}

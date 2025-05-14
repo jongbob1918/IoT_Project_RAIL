@@ -3,7 +3,7 @@ import logging
 import time
 from typing import Dict, Any, List
 from datetime import datetime
-from controllers.base_controller import BaseController
+from utils.system import Controller
 from .rfid_handler import RFIDHandler
 from .access_manager import AccessManager
 from serial_handlers.gate_serial import GateSerialHandler
@@ -16,7 +16,7 @@ handler.send_mode_command(register_mode=False)
 logger = logging.getLogger(__name__)
 
 # ==== 출입 제어 컨트롤러 ====
-class GateController(BaseController):
+class GateController(Controller):
     # ==== 출입 컨트롤러 초기화 ====
     def __init__(self, tcp_handler, socketio=None, db_helper=None):
         super().__init__(tcp_handler, socketio, db_helper)

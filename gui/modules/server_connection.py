@@ -1,6 +1,9 @@
 import socketio
 import requests
 from PyQt6.QtCore import QObject, pyqtSignal
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ServerConnection(QObject):
     """서버 연결 및 통신을 관리하는 클래스"""
@@ -48,6 +51,8 @@ class ServerConnection(QObject):
             # 데이터 매니저에 연결 상태 업데이트
             if self.data_manager:
                 self.data_manager.update_server_connection_status(True)
+                # 즉시 컨베이어 상태 변경 이벤트 발생
+                self.data_manager.conveyor_status_changed.emit()
         
         @self.sio.event
         def connect_error(data):
@@ -59,6 +64,8 @@ class ServerConnection(QObject):
             # 데이터 매니저에 연결 상태 업데이트
             if self.data_manager:
                 self.data_manager.update_server_connection_status(False)
+                # 즉시 컨베이어 상태 변경 이벤트 발생
+                self.data_manager.conveyor_status_changed.emit()
         
         @self.sio.event
         def disconnect():
@@ -69,6 +76,8 @@ class ServerConnection(QObject):
             # 데이터 매니저에 연결 상태 업데이트
             if self.data_manager:
                 self.data_manager.update_server_connection_status(False)
+                # 즉시 컨베이어 상태 변경 이벤트 발생
+                self.data_manager.conveyor_status_changed.emit()
         
         @self.sio.on("event", namespace="/ws")
         def on_event(data):
@@ -103,22 +112,45 @@ class ServerConnection(QObject):
                     if is_running is not None:
                         self.data_manager._conveyor_status = 1 if is_running else 0
                         self.data_manager.conveyor_status_changed.emit()
+                
+        # 바코드 스캔 이벤트 처리
+        @self.sio.on("barcode_scanned", namespace="/ws")
+        def on_barcode_scanned(data):
+            print(f"바코드 스캔 이벤트 수신: {data}")
+            # 데이터가 올바른 형식인지 확인
+            if isinstance(data, dict) and "barcode" in data and "category" in data:
+                # sorter 카테고리, barcode_scanned 액션으로 표준화된 이벤트 형식으로 변환
+                self.eventReceived.emit("sorter", "barcode_scanned", data)
     
     def connect_to_server(self):
         """서버에 연결 시도"""
         try:
             # REST API 연결 테스트
-            # 실제 환경에서는 아래 코드 사용
-            # response = requests.get(f"{self.api_base_url}/status", timeout=5)
-            # response.raise_for_status()
+            response = requests.get(f"{self.api_base_url}/status", timeout=5)
+            response.raise_for_status()
             
-            # 테스트용 코드 - 항상 연결 실패
-            # 실제 환경에서는 아래 주석 처리
-            raise ConnectionError("테스트: 서버 연결 실패")
+            # 새로운 Socket.IO 클라이언트 생성
+            self.sio = socketio.Client(
+                logger=False,
+                engineio_logger=False,
+                reconnection=True,
+                reconnection_attempts=3,
+                reconnection_delay=1,
+                reconnection_delay_max=5,
+                wait_timeout=5
+            )
+            
+            # 이벤트 핸들러 재설정
+            self.setup_socketio_events()
             
             # WebSocket 연결
             if not self.is_connected:
                 self.sio.connect(self.websocket_url, namespaces=["/ws"])
+                
+                # 연결 후 즉시 상태 업데이트
+                if self.data_manager:
+                    self.data_manager.update_server_connection_status(True)
+                    self.data_manager.conveyor_status_changed.emit()
             
             return True
         except Exception as e:
@@ -130,6 +162,7 @@ class ServerConnection(QObject):
             # 데이터 매니저에 연결 상태 업데이트
             if self.data_manager:
                 self.data_manager.update_server_connection_status(False)
+                self.data_manager.conveyor_status_changed.emit()
             
             return False
     
@@ -161,17 +194,9 @@ class ServerConnection(QObject):
             raise ConnectionError("서버에 연결되어 있지 않습니다.")
         
         try:
-            # 실제 환경에서는 아래 코드 사용
-            # response = requests.get(f"{self.api_base_url}/environment/status", timeout=3)
-            # response.raise_for_status()
-            # return response.json()
-            
-            # 테스트 데이터
-            return {
-                "A": {"temperature": -25.0},
-                "B": {"temperature": 5.0},
-                "C": {"temperature": 20.0}
-            }
+            response = requests.get(f"{self.api_base_url}/environment/status", timeout=3)
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             print(f"환경 데이터 가져오기 실패: {str(e)}")
             raise
@@ -182,17 +207,9 @@ class ServerConnection(QObject):
             raise ConnectionError("서버에 연결되어 있지 않습니다.")
         
         try:
-            # 실제 환경에서는 아래 코드 사용
-            # response = requests.get(f"{self.api_base_url}/inventory/status", timeout=3)
-            # response.raise_for_status()
-            # return response.json()
-            
-            # 테스트 데이터
-            return {
-                "A": {"used": 37, "capacity": 100},
-                "B": {"used": 93, "capacity": 100},
-                "C": {"used": 87, "capacity": 100}
-            }
+            response = requests.get(f"{self.api_base_url}/inventory/status", timeout=3)
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             print(f"재고 데이터 가져오기 실패: {str(e)}")
             raise
@@ -203,20 +220,13 @@ class ServerConnection(QObject):
             raise ConnectionError("서버에 연결되어 있지 않습니다.")
         
         try:
-            # 실제 환경에서는 아래 코드 사용
-            # response_over = requests.get(f"{self.api_base_url}/expiry/expired", timeout=3)
-            # response_soon = requests.get(f"{self.api_base_url}/expiry/alerts", timeout=3)
-            # response_over.raise_for_status()
-            # response_soon.raise_for_status()
-            # return {
-            #     "over": len(response_over.json()),
-            #     "soon": len(response_soon.json())
-            # }
-            
-            # 테스트 데이터
+            response_over = requests.get(f"{self.api_base_url}/expiry/expired", timeout=3)
+            response_soon = requests.get(f"{self.api_base_url}/expiry/alerts", timeout=3)
+            response_over.raise_for_status()
+            response_soon.raise_for_status()
             return {
-                "over": 2,
-                "soon": 10
+                "over": len(response_over.json()),
+                "soon": len(response_soon.json())
             }
         except Exception as e:
             print(f"유통기한 데이터 가져오기 실패: {str(e)}")
@@ -228,14 +238,10 @@ class ServerConnection(QObject):
             raise ConnectionError("서버에 연결되어 있지 않습니다.")
         
         try:
-            # 실제 환경에서는 아래 코드 사용
-            # response = requests.get(f"{self.api_base_url}/sort/inbound/status", timeout=3)
-            # response.raise_for_status()
-            # data = response.json()
-            # return 1 if data.get("is_running", False) else 0
-            
-            # 테스트 데이터
-            return 0  # 정지 상태
+            response = requests.get(f"{self.api_base_url}/sort/inbound/status", timeout=3)
+            response.raise_for_status()
+            data = response.json()
+            return 1 if data.get("is_running", False) else 0
         except Exception as e:
             print(f"컨베이어 상태 가져오기 실패: {str(e)}")
             raise
@@ -246,18 +252,55 @@ class ServerConnection(QObject):
             raise ConnectionError("서버에 연결되어 있지 않습니다.")
         
         try:
-            # 실제 환경에서는 아래 코드 사용
-            # response = requests.get(f"{self.api_base_url}/inventory/today_input", timeout=3)
-            # response.raise_for_status()
-            # return response.json()
-            
-            # 테스트 데이터
-            return {
-                "total": 25,
-                "A": 8,
-                "B": 10,
-                "C": 7
-            }
+            response = requests.get(f"{self.api_base_url}/inventory/today_input", timeout=3)
+            response.raise_for_status()
+            return response.json()
         except Exception as e:
             print(f"오늘 입고 현황 가져오기 실패: {str(e)}")
             raise
+            
+    def get_error_count(self):
+        """오류 건수 가져오기"""
+        if not self.is_connected:
+            raise ConnectionError("서버에 연결되어 있지 않습니다.")
+        
+        try:
+            response = requests.get(f"{self.api_base_url}/sort/status", timeout=3)
+            response.raise_for_status()
+            data = response.json()
+            # 분류기 상태 데이터에서 E 카테고리 건수 추출
+            sort_counts = data.get("status", {}).get("sort_counts", {})
+            return sort_counts.get("E", 0)
+        except Exception as e:
+            print(f"오류 건수 가져오기 실패: {str(e)}")
+            return 0  # 오류 시 기본값 반환
+            
+    def get_waiting_count(self):
+        """대기 건수 가져오기"""
+        if not self.is_connected:
+            raise ConnectionError("서버에 연결되어 있지 않습니다.")
+        
+        try:
+            response = requests.get(f"{self.api_base_url}/sort/status", timeout=3)
+            response.raise_for_status()
+            data = response.json()
+            # 분류기 상태 데이터에서 대기 건수 추출
+            return data.get("status", {}).get("items_waiting", 0)
+        except Exception as e:
+            print(f"대기 건수 가져오기 실패: {str(e)}")
+            return 0  # 오류 시 기본값 반환
+            
+    def get_total_processed(self):
+        """총 처리 건수 가져오기"""
+        if not self.is_connected:
+            raise ConnectionError("서버에 연결되어 있지 않습니다.")
+        
+        try:
+            response = requests.get(f"{self.api_base_url}/sort/status", timeout=3)
+            response.raise_for_status()
+            data = response.json()
+            # 분류기 상태 데이터에서 총 처리 건수 추출
+            return data.get("status", {}).get("items_processed", 0)
+        except Exception as e:
+            print(f"총 처리 건수 가져오기 실패: {str(e)}")
+            return 0  # 오류 시 기본값 반환

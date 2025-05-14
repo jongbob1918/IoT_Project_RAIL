@@ -13,11 +13,6 @@ def get_access_controller():
     controller = get_controller('access')
     if controller:
         return controller
-        
-    # 이전 방식 시도
-    from api import controller as main_controller
-    if main_controller and hasattr(main_controller, 'access_controller'):
-        return main_controller.access_controller
     
     # 더미 컨트롤러 반환 - 에러 방지
     class DummyAccessController:
