@@ -23,7 +23,7 @@ class SortController:
         self.tcp_handler = tcp_handler
         
         # 상태 정보 초기화
-        self.state = self.STATE_RUNNING
+        self.state = self.STATE_STOPPED
         self.motor_active = False
         self.items_waiting = 0
         self.items_processed = 0
