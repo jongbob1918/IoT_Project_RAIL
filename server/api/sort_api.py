@@ -2,6 +2,7 @@
 from flask import Blueprint, jsonify, request
 from controllers.sort_controller import SortController
 import time
+from datetime import datetime
 
 # 블루프린트 생성
 sort_bp = Blueprint('sort', __name__, url_prefix='/api/sort')
@@ -18,11 +19,28 @@ def init_controller(controller):
 @sort_bp.route('/status', methods=['GET'])
 def get_status():
     """분류기 상태 조회 API"""
-    if not sort_controller:
-        return jsonify({"error": "컨트롤러가 초기화되지 않았습니다."}), 500
-    
-    status = sort_controller.get_status()
-    return jsonify(status)
+    try:
+        if not sort_controller:
+            return jsonify({
+                "success": False,
+                "error": {"message": "컨트롤러가 초기화되지 않았습니다."},
+                "timestamp": datetime.now().isoformat()
+            }), 500
+        
+        status = sort_controller.get_status()
+        
+        # 표준 응답 형식으로 변환
+        return jsonify({
+            "success": True,
+            "data": status,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": {"message": str(e)},
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
 # ==== 분류기 제어 API ====
 @sort_bp.route('/control', methods=['POST'])

@@ -2,9 +2,14 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from flask import Blueprint, jsonify, request
 from api import get_controller
+from db.db_manager import DBManager
+import logging
 
 # Blueprint 초기화
 bp = Blueprint('inventory', __name__)
+
+# 로거 설정
+logger = logging.getLogger(__name__)
 
 # 컨트롤러 의존성
 def get_inventory_controller():
@@ -34,27 +39,56 @@ def get_inventory_controller():
     
     return DummyInventoryController()
 
+@bp.route('/waiting', methods=['GET'])
+def get_waiting_items():
+    """입고 대기 아이템 수 반환"""
+    try:
+        # 분류기 컨트롤러에서 직접 대기 물품 수를 가져옴
+        sort_controller = get_controller('sort')
+        if sort_controller:
+            waiting_count = sort_controller.items_waiting
+        else:
+            # 컨트롤러 접근 실패 시 기본값 제공
+            logger.warning("분류기 컨트롤러에 접근할 수 없습니다. 대기 물품 수를 0으로 설정합니다.")
+            waiting_count = 0
+            
+        return jsonify({"waiting": waiting_count})
+    except Exception as e:
+        logger.error(f"입고 대기 아이템 조회 오류: {str(e)}")
+        # 오류 발생 시에도 UI에 필요한 기본값 제공
+        return jsonify({"waiting": 0})
+
 @bp.route("/status", methods=["GET"])
 def get_inventory_status():
-    """재고 상태 조회"""
+    """재고 현황 요약 정보 조회"""
     try:
         controller = get_inventory_controller()
         status = controller.get_inventory_status()
+        
+        # 결과 타입 체크 및 변환
+        if status is None:
+            status = {"status": "unknown"}
+            
+        if not isinstance(status, dict):
+            logger.warning(f"재고 상태: 예상치 못한 데이터 타입 - {type(status).__name__}")
+            status = {"status": "error", "message": "데이터 형식 오류"}
+        
+        # GUI에서 기대하는 형식으로 반환
         return jsonify({
-            "success": True, 
+            "success": True,
             "data": status,
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
+        logger.error(f"재고 상태 조회 오류: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
+            "error": {"message": str(e)},
             "timestamp": datetime.now().isoformat()
         }), 500
 
 @bp.route("/items", methods=["GET"])
 def get_inventory_items():
-    """재고 물품 목록 조회"""
     try:
         category = request.args.get("category")
         limit = request.args.get("limit", default=20, type=int)
@@ -63,6 +97,16 @@ def get_inventory_items():
         controller = get_inventory_controller()
         items = controller.get_inventory_items(category, limit, offset)
         
+        # None 또는 다른 타입 체크
+        if items is None:
+            items = []
+            
+        # 리스트가 아닌 경우 처리 (GUI는 리스트 형식 기대)
+        if not isinstance(items, list):
+            logger.warning(f"inventory_items: 예상치 못한 데이터 타입 - {type(items).__name__}")
+            items = []
+        
+        # GUI에서 기대하는 형식으로 반환
         return jsonify({
             "success": True,
             "data": items,
@@ -70,34 +114,9 @@ def get_inventory_items():
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
+        logger.error(f"재고 목록 조회 오류: {str(e)}")
         return jsonify({
             "success": False,
-            "error": str(e),
+            "error": {"message": str(e)},
             "timestamp": datetime.now().isoformat()
         }), 500
-
-@bp.route("/items/<item_id>", methods=["GET"])
-def get_inventory_item(item_id):
-    """재고 물품 상세 조회"""
-    try:
-        controller = get_inventory_controller()
-        item = controller.get_inventory_item(item_id)
-        
-        if not item:
-            return jsonify({
-                "success": False,
-                "error": "물품을 찾을 수 없습니다.",
-                "timestamp": datetime.now().isoformat()
-            }), 404
-            
-        return jsonify({
-            "success": True,
-            "data": item,
-            "timestamp": datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500 

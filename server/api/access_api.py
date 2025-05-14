@@ -2,9 +2,12 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from flask import Blueprint, jsonify, request
 from api import get_controller
+from db.db_manager import DBManager
 
 # Blueprint 초기화
 bp = Blueprint('access', __name__)
+
+db_manager = DBManager()
 
 # 컨트롤러 의존성
 def get_access_controller():
@@ -27,21 +30,53 @@ def get_access_controller():
     
     return DummyAccessController()
 
-@bp.route("/logs", methods=["GET"])
+@bp.route('/logs', methods=['GET'])
 def get_access_logs():
-    """출입 기록 조회"""
     try:
-        controller = get_access_controller()
-        logs = controller.get_access_logs()
-        return jsonify({
-            "success": True, 
+        # 페이징 처리 추가
+        limit = request.args.get('limit', default=20, type=int)
+        offset = request.args.get('offset', default=0, type=int)
+        
+        # 날짜 필터링 (선택적)
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        # 데이터베이스에서 로그 가져오기
+        logs = db_manager.get_access_logs(limit=limit, offset=offset, 
+                                         start_date=start_date, end_date=end_date)
+        
+        # 타입 체크 및 변환 - 안전한 형태로 수정
+        if logs is None:
+            logs = []
+        
+        # 문자열이 반환될 경우의 처리
+        if isinstance(logs, str):
+            try:
+                import json
+                # JSON 문자열인 경우 파싱 시도
+                parsed_logs = json.loads(logs)
+                if isinstance(parsed_logs, list):
+                    logs = parsed_logs
+                else:
+                    logs = []
+            except:
+                logs = []
+        
+        # 리스트가 아닌 경우 빈 리스트로 변환
+        if not isinstance(logs, list):
+            logs = []
+        
+        result = {
+            "success": True,
             "logs": logs,
+            "total_count": len(logs),
             "timestamp": datetime.now().isoformat()
-        })
+        }
+        return jsonify(result)
     except Exception as e:
         return jsonify({
             "success": False,
-            "error": str(e),
+            "error": {"message": str(e)},
             "timestamp": datetime.now().isoformat()
         }), 500
 

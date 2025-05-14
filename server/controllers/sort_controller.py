@@ -185,52 +185,38 @@ class SortController:
         except ValueError:
             logger.error(f"IR 센서 값 파싱 오류: {payload}")
     
-    def _handle_barcode(self, payload):
-        """바코드 이벤트 처리"""
-        # 처리 중 표시
-        if self.processing_barcode:
-            logger.warning("이미 처리 중인 바코드가 있음")
-            return
-            
-        self.processing_barcode = True
-        
+    def _handle_sort_complete(self, payload):
+        """분류 완료 이벤트 처리"""
         try:
-            # 바코드 데이터 추출 (bc 이후의 문자열)
-            barcode_data = payload[2:] if len(payload) > 2 else ""
+            # 예: ss1 형식 (zone 포함)
+            zone = payload[2:3] if len(payload) > 2 else None
             
-            if not barcode_data:
-                logger.warning("바코드 데이터 없음")
-                self._send_sort_command("E")  # 오류 분류
-                return
-            
-            # 바코드 파싱
-            item_info = parse_barcode(barcode_data)
-            
-            if not item_info:
-                logger.error(f"바코드 파싱 실패: {barcode_data}")
-                self._send_sort_command("E")  # 오류 분류
-                return
-            
-            # 타임스탬프 추가
-            item_info["timestamp"] = time.time()
-            
-            # 분류 명령 전송
-            self._send_sort_command(item_info["category"])
-            
-            # 로그에 추가
-            self._add_sort_log(item_info)
-            
-            # 바코드 인식 이벤트 발송 - 네임스페이스 추가
-            self.socketio.emit('barcode_scanned', item_info, namespace="/ws")
-            
-            # 표준 형식 이벤트도 추가로 발송
-            self._emit_standardized_event("sorter", "barcode_scanned", item_info)
-            
+            # 분류 존 체크
+            if zone not in ["A", "B", "C", "E"]:
+                logger.warning(f"알 수 없는 분류 존: {zone}, 'E'로 처리")
+                zone = "E"
+                
+            # 대기 물품 수가 0보다 큰 경우에만 처리
+            if self.items_waiting > 0:
+                # 대기 물품 감소
+                self.items_waiting -= 1
+                # 처리 물품 증가
+                self.items_processed += 1
+                # 분류 카운트 증가
+                self.sort_counts[zone] += 1
+                
+                logger.info(f"물품 분류 완료: 존 {zone}, 남은 대기 물품: {self.items_waiting}")
+                
+                # 상태 업데이트 이벤트 발송
+                self._emit_status_update()
+                
+                # 자동 정지 타이머 재설정
+                self._reset_auto_stop_timer()
+            else:
+                logger.warning("분류 완료 이벤트 수신했으나 대기 물품 수가 0")
+                
         except Exception as e:
-            logger.error(f"바코드 처리 오류: {str(e)}")
-            self._send_sort_command("E")  # 오류 분류
-        finally:
-            self.processing_barcode = False
+            logger.error(f"분류 완료 이벤트 처리 오류: {str(e)}")
     
     def _handle_barcode(self, payload):
         """바코드 이벤트 처리"""
@@ -310,11 +296,6 @@ class SortController:
         # 최대 10개 유지
         if len(self.sort_logs) > 10:
             self.sort_logs = self.sort_logs[:10]
-    
-    def _emit_event(self, event_name, data):
-        """소켓 이벤트 발송 (옛 방식)"""
-        if self.socketio:
-            self.socketio.emit(event_name, data)
     
     def _emit_standardized_event(self, category, action, payload):
         """표준화된 소켓 이벤트 발송"""

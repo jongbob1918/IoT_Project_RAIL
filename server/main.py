@@ -14,11 +14,12 @@ from controllers.sort_controller import SortController
 from utils.tcp_handler import TCPHandler
 from utils.multi_tcp_handler import MultiTCPHandler
 from api import set_controller, register_controller  # 컨트롤러 관리 함수 임포트
+
 try:
     from utils.tcp_debug_helper import *
     print("디버깅 모드가 활성화되었습니다.")
 except ImportError as e:
-    pass  # 디버그 헬퍼가 없으면 무시\
+    pass  # 디버그 헬퍼가 없으면 무시
 
 # logger 초기화 전에 로그 디렉토리 확인
 import os
