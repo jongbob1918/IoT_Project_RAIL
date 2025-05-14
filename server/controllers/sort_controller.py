@@ -260,9 +260,6 @@ class SortController:
             
             # 타임스탬프 추가
             item_info["timestamp"] = time.time()
-            
-            # 여기서 선반 할당 코드 제거 (있었다면)
-            
             # 분류 명령 전송
             self._send_sort_command(item_info["category"])
             
