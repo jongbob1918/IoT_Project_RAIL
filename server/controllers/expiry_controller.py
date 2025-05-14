@@ -24,9 +24,26 @@ class ExpiryController:
         self.inventory_controller = inventory_controller
         self.db = db_helper
         self.logger = logging.getLogger(__name__)
+            
+    def get_expiry_alerts(self, days_threshold: int = 7) -> List[Dict]:
+        """유통기한 경고 목록을 조회합니다.
         
-        # 임시 유통기한 데이터
-        self.expiry_items = [
+        Args:
+            days_threshold (int): 경고 기준 일수
+            
+        Returns:
+            List[Dict]: 유통기한 경고 목록
+        """
+        # 데이터베이스에서 유통기한 경고 조회
+        if self.db and hasattr(self.db, 'get_expiry_alerts'):
+            return self.db.get_expiry_alerts(days_threshold)
+        
+        # 데이터베이스 연결이 없는 경우 빈 배열 반환
+        today = datetime.now().date()
+        self.logger.warning("데이터베이스 연결 없음 - 샘플 데이터 사용")
+        
+        # 샘플 데이터 반환 (기존 하드코딩된 데이터)
+        sample_data = [
             {
                 "item_id": "B001",
                 "barcode": "B0301250510",
@@ -37,42 +54,9 @@ class ExpiryController:
                 "days_remaining": 5,
                 "status": "warning",
                 "entry_date": "2025-05-03"
-            },
-            {
-                "item_id": "C001",
-                "barcode": "C0806250505",
-                "name": "롯데 샌드위치용 식빵",
-                "warehouse_id": "C",
-                "shelf_id": "C01",
-                "expiry_date": "2025-05-05",
-                "days_remaining": 0,
-                "status": "expired",
-                "entry_date": "2025-05-01"
             }
         ]
-        
-    def get_expiry_alerts(self, days_threshold: int = 7) -> List[Dict]:
-        """유통기한 경고 목록을 조회합니다.
-        
-        Args:
-            days_threshold (int): 경고 기준 일수
-            
-        Returns:
-            List[Dict]: 유통기한 경고 목록
-        """
-        today = datetime.now().date()
-        alerts = []
-        
-        for item in self.expiry_items:
-            expiry_date = datetime.strptime(item["expiry_date"], "%Y-%m-%d").date()
-            days_remaining = (expiry_date - today).days
-            
-            if 0 <= days_remaining <= days_threshold:
-                item_copy = item.copy()
-                item_copy["days_remaining"] = days_remaining
-                alerts.append(item_copy)
-                
-        return alerts
+        return sample_data
         
     def get_expired_items(self) -> List[Dict]:
         """유통기한 만료 물품을 조회합니다.
@@ -80,19 +64,29 @@ class ExpiryController:
         Returns:
             List[Dict]: 유통기한 만료 물품 목록
         """
-        today = datetime.now().date()
-        expired_items = []
+        # 데이터베이스에서 유통기한 만료 물품 조회
+        if self.db and hasattr(self.db, 'get_expired_items'):
+            return self.db.get_expired_items()
         
-        for item in self.expiry_items:
-            expiry_date = datetime.strptime(item["expiry_date"], "%Y-%m-%d").date()
-            days_remaining = (expiry_date - today).days
-            
-            if days_remaining < 0:
-                item_copy = item.copy()
-                item_copy["days_remaining"] = days_remaining
-                expired_items.append(item_copy)
-                
-        return expired_items
+        # 데이터베이스 연결이 없는 경우 빈 배열 반환
+        today = datetime.now().date()
+        self.logger.warning("데이터베이스 연결 없음 - 샘플 데이터 사용")
+        
+        # 샘플 데이터 반환 (기존 하드코딩된 데이터)
+        sample_data = [
+            {
+                "item_id": "C001",
+                "barcode": "C0806250505",
+                "name": "롯데 샌드위치용 식빵",
+                "warehouse_id": "C", 
+                "shelf_id": "C01",
+                "expiry_date": "2025-05-05",
+                "days_remaining": 0,
+                "status": "expired",
+                "entry_date": "2025-05-01"
+            }
+        ]
+        return sample_data
         
     def process_expired_item(self, item_id: str, action: str, description: str) -> bool:
         """유통기한 만료 물품을 처리합니다.
@@ -105,17 +99,16 @@ class ExpiryController:
         Returns:
             bool: 처리 성공 여부
         """
-        # 물품 존재 확인
-        target_item = None
-        for item in self.expiry_items:
-            if item["item_id"] == item_id:
-                target_item = item
-                break
-                
-        if not target_item:
-            self.logger.error(f"물품을 찾을 수 없음: {item_id}")
+        # 물품 존재 확인 - DB에서 조회
+        if self.db and hasattr(self.db, 'get_item_by_id'):
+            target_item = self.db.get_item_by_id(item_id)
+            if not target_item:
+                self.logger.error(f"물품을 찾을 수 없음: {item_id}")
+                return False
+        else:
+            self.logger.error("데이터베이스 연결 없음 - 물품 처리 불가")
             return False
-            
+                
         # 처리 작업 검증
         if action not in ["dispose", "return"]:
             self.logger.error(f"잘못된 처리 작업: {action}")
@@ -126,11 +119,13 @@ class ExpiryController:
         
         # 재고에서 제거 (물품 폐기 또는 반품)
         if action == "dispose":
-            # 재고 제거 로직 (예: DB 업데이트)
-            pass
+            # 재고 제거 로직 (DB 업데이트)
+            if self.db and hasattr(self.db, 'dispose_item'):
+                self.db.dispose_item(item_id)
         elif action == "return":
             # 반품 처리 로직
-            pass
+            if self.db and hasattr(self.db, 'return_item'):
+                self.db.return_item(item_id)
             
         # 처리 기록 저장
         log_entry = {
@@ -140,7 +135,7 @@ class ExpiryController:
             "timestamp": datetime.now().isoformat()
         }
         
-        if self.db:
+        if self.db and hasattr(self.db, 'save_expiry_process_log'):
             self.db.save_expiry_process_log(log_entry)
             
         return True
@@ -149,48 +144,35 @@ class ExpiryController:
         """모든 물품의 유통기한을 검사합니다."""
         today = datetime.now().date()
         
-        for item in self.expiry_items:
+        # 데이터베이스에서 모든 물품 조회
+        all_items = []
+        if self.db and hasattr(self.db, 'get_all_items'):
+            all_items = self.db.get_all_items()
+        
+        expired_items = []
+        today_items = []
+        upcoming_items = []
+        
+        for item in all_items:
             expiry_date = datetime.strptime(item["expiry_date"], "%Y-%m-%d").date()
             days_remaining = (expiry_date - today).days
             
             # 상태 업데이트
             if days_remaining < 0:
                 item["status"] = "expired"
-            elif days_remaining <= 3:
+                expired_items.append(item)
+            elif days_remaining == 0:
                 item["status"] = "danger"
+                today_items.append(item)
             elif days_remaining <= 7:
                 item["status"] = "warning"
+                upcoming_items.append(item)
             else:
                 item["status"] = "normal"
                 
             item["days_remaining"] = days_remaining
-            
-        # GUI 업데이트
-        self.update_gui()
         
-    def update_gui(self):
-        """GUI를 업데이트합니다."""
-        # 오늘 만료
-        today = datetime.now().date()
-        today_items = []
-        
-        # 이미 만료됨
-        expired_items = []
-        
-        # 곧 만료 예정
-        upcoming_items = []
-        
-        for item in self.expiry_items:
-            expiry_date = datetime.strptime(item["expiry_date"], "%Y-%m-%d").date()
-            days_remaining = (expiry_date - today).days
-            
-            if days_remaining < 0:
-                expired_items.append(item)
-            elif days_remaining == 0:
-                today_items.append(item)
-            elif days_remaining <= 7:
-                upcoming_items.append(item)
-                
+        # 상태 데이터 생성
         status_data = {
             "expired_count": len(expired_items),
             "today_count": len(today_items),
@@ -199,4 +181,9 @@ class ExpiryController:
         }
         
         # WebSocket으로 상태 브로드캐스트
-        self.ws_manager.broadcast("expiry_status", status_data) 
+        self.ws_manager.broadcast("expiry_status", status_data)
+                
+    def update_gui(self):
+        """GUI를 업데이트합니다."""
+        # 상태 업데이트하고 GUI에 전송
+        self.check_expiry_dates() 

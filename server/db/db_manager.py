@@ -2,7 +2,7 @@
 import os
 import logging
 from typing import Optional, Dict, List, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # MySQL 관련 라이브러리
 try:
@@ -435,6 +435,187 @@ class DBManager:
         except Exception as e:
             logger.error(f"유통기한 처리 로그 저장 오류: {str(e)}")
             return False
+            
+    # 유통기한 만료 물품 조회
+    def get_expired_items(self) -> List[Dict]:
+        """
+        유통기한이 만료된 물품 목록을 조회합니다.
+        
+        Returns:
+            List[Dict]: 유통기한 만료 물품 목록
+        """
+        if not self.ensure_connection():
+            logger.warning("DB 연결 없음 - 유통기한 만료 물품 조회 불가")
+            return []
+            
+        try:
+            # 오늘 날짜 기준으로 유통기한이 지난 물품 조회
+            today = datetime.now().date().isoformat()
+            
+            query = """
+                SELECT i.id, i.barcode, i.product_name, i.exp, i.quantity, i.entry_date, 
+                       w.id as warehouse_id, i.shelf_id
+                FROM inventory i
+                JOIN warehouse w ON i.warehouse_id = w.id
+                WHERE i.exp < %s
+                ORDER BY i.exp ASC
+            """
+            result = self.execute_query(query, (today,))
+            
+            items = []
+            if result:
+                for row in result:
+                    # 유통기한과 오늘 날짜의 차이 계산
+                    exp_date = datetime.strptime(row[3], "%Y-%m-%d").date()
+                    today_date = datetime.now().date()
+                    days_remaining = (exp_date - today_date).days
+                    
+                    item = {
+                        "id": row[0],
+                        "barcode": row[1],
+                        "product_name": row[2],
+                        "exp": row[3],
+                        "quantity": row[4],
+                        "entry_date": row[5],
+                        "warehouse_id": row[6],
+                        "shelf_id": row[7],
+                        "days_remaining": days_remaining,
+                        "status": "expired"
+                    }
+                    items.append(item)
+                    
+            logger.info(f"유통기한 만료 물품 {len(items)}건 조회 완료")
+            return items
+            
+        except Exception as e:
+            logger.error(f"유통기한 만료 물품 조회 오류: {str(e)}")
+            return []
+            
+    # 유통기한 경고 물품 조회
+    def get_expiry_alerts(self, days_threshold: int = 7) -> List[Dict]:
+        """
+        유통기한 경고 목록을 조회합니다.
+        
+        Args:
+            days_threshold (int): 경고 기준 일수 (기본값: 7일)
+            
+        Returns:
+            List[Dict]: 유통기한 경고 목록
+        """
+        if not self.ensure_connection():
+            logger.warning("DB 연결 없음 - 유통기한 경고 물품 조회 불가")
+            return []
+            
+        try:
+            # 오늘 날짜 기준으로 지정된 일수 내에 유통기한이 만료되는 물품 조회
+            today = datetime.now().date()
+            future_date = (today + timedelta(days=days_threshold)).isoformat()
+            
+            query = """
+                SELECT i.id, i.barcode, i.product_name, i.exp, i.quantity, i.entry_date, 
+                       w.id as warehouse_id, i.shelf_id
+                FROM inventory i
+                JOIN warehouse w ON i.warehouse_id = w.id
+                WHERE i.exp >= %s AND i.exp <= %s
+                ORDER BY i.exp ASC
+            """
+            result = self.execute_query(query, (today.isoformat(), future_date))
+            
+            items = []
+            if result:
+                for row in result:
+                    # 유통기한과 오늘 날짜의 차이 계산
+                    exp_date = datetime.strptime(row[3], "%Y-%m-%d").date()
+                    days_remaining = (exp_date - today).days
+                    
+                    # 상태 결정
+                    status = "warning"
+                    if days_remaining <= 3:
+                        status = "danger"
+                    elif days_remaining == 0:
+                        status = "today"
+                    
+                    item = {
+                        "id": row[0],
+                        "barcode": row[1],
+                        "product_name": row[2],
+                        "exp": row[3],
+                        "quantity": row[4],
+                        "entry_date": row[5],
+                        "warehouse_id": row[6],
+                        "shelf_id": row[7],
+                        "days_remaining": days_remaining,
+                        "status": status
+                    }
+                    items.append(item)
+                    
+            logger.info(f"유통기한 경고 물품 {len(items)}건 조회 완료 (기준일: {days_threshold}일)")
+            return items
+            
+        except Exception as e:
+            logger.error(f"유통기한 경고 물품 조회 오류: {str(e)}")
+            return []
+            
+    # 특정 아이템 조회
+    def get_item_by_id(self, item_id: str) -> Optional[Dict]:
+        """
+        특정 ID의 물품 정보를 조회합니다.
+        
+        Args:
+            item_id (str): 물품 ID
+            
+        Returns:
+            Optional[Dict]: 물품 정보 또는 None
+        """
+        if not self.ensure_connection():
+            logger.warning(f"DB 연결 없음 - 물품 조회 불가 (ID: {item_id})")
+            return None
+            
+        try:
+            query = """
+                SELECT i.id, i.barcode, i.product_name, i.exp, i.quantity, i.entry_date, 
+                       w.id as warehouse_id, i.shelf_id
+                FROM inventory i
+                JOIN warehouse w ON i.warehouse_id = w.id
+                WHERE i.id = %s
+            """
+            result = self.execute_query(query, (item_id,))
+            
+            if result and len(result) > 0:
+                row = result[0]
+                
+                # 유통기한과 오늘 날짜의 차이 계산
+                exp_date = datetime.strptime(row[3], "%Y-%m-%d").date()
+                today_date = datetime.now().date()
+                days_remaining = (exp_date - today_date).days
+                
+                # 상태 결정
+                status = "normal"
+                if days_remaining < 0:
+                    status = "expired"
+                elif days_remaining <= 3:
+                    status = "danger"
+                elif days_remaining <= 7:
+                    status = "warning"
+                
+                return {
+                    "id": row[0],
+                    "barcode": row[1],
+                    "product_name": row[2],
+                    "exp": row[3],
+                    "quantity": row[4],
+                    "entry_date": row[5],
+                    "warehouse_id": row[6],
+                    "shelf_id": row[7],
+                    "days_remaining": days_remaining,
+                    "status": status
+                }
+            else:
+                return None
+                
+        except Exception as e:
+            logger.error(f"물품 조회 오류: {str(e)}")
+            return None
 
 # 싱글톤 인스턴스
 db_manager = DBManager()

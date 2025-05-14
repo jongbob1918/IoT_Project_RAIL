@@ -67,6 +67,33 @@ LOCK TABLES `error` WRITE;
 UNLOCK TABLES;
 
 --
+-- Table structure for table `error_logs`
+--
+
+DROP TABLE IF EXISTS `error_logs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `error_logs` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `error_code` varchar(10) DEFAULT NULL,
+  `description` text,
+  `timestamp` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `error_code` (`error_code`),
+  CONSTRAINT `error_logs_ibfk_1` FOREIGN KEY (`error_code`) REFERENCES `error` (`error_code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `error_logs`
+--
+
+LOCK TABLES `error_logs` WRITE;
+/*!40000 ALTER TABLE `error_logs` DISABLE KEYS */;
+/*!40000 ALTER TABLE `error_logs` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `product`
 --
 
