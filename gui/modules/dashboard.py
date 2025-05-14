@@ -296,3 +296,5 @@ class DashboardPage(BasePage):
             self.add_notification(f"정보: {message}")
         else:
             self.add_notification(message)
+
+    
