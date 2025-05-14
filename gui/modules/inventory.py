@@ -156,26 +156,13 @@ class InventoryPage(BasePage):
         # 서버 연결 상태 표시 초기화
         self.init_status_label()
         
-        # 타이머 설정 (서버 연결 상태 갱신)
-        self.setup_update_timer()
-        
         # 데이터 변경 이벤트 연결
         self.connect_data_signals()
-        
-        # 초기 서버 연결 상태 표시 업데이트
-        self.update_connection_status()
         
         # 초기 창고 데이터 업데이트
         self.update_warehouse_data()
         
         logger.info("재고 관리 페이지 초기화 완료")
-    
-    def setup_update_timer(self):
-        """타이머 설정"""
-        self.update_timer = QTimer(self)
-        self.update_timer.timeout.connect(self.update_connection_status)
-        self.update_timer.timeout.connect(self.update_warehouse_data)
-        self.update_timer.start(5000)  # 5초마다 업데이트
     
     def connect_buttons(self):
         """버튼 이벤트 연결"""
@@ -192,6 +179,7 @@ class InventoryPage(BasePage):
         """데이터 변경 이벤트 연결"""
         self.data_manager.notification_added.connect(self.on_notification)
         self.data_manager.inventory_data_changed.connect(self.on_inventory_changed)
+        self.data_manager.server_connection_changed.connect(self.on_server_connection_changed)
     
     def init_chart_frame(self):
         """차트 프레임 초기화"""
@@ -243,7 +231,7 @@ class InventoryPage(BasePage):
     def update_warehouse_data(self):
         """창고 데이터 업데이트 (프로그레스 바 및 레이블)"""
         try:
-            if not self.is_server_connected():
+            if not self.data_manager.is_server_connected():
                 return
                 
             # 창고 데이터 가져오기
@@ -283,30 +271,15 @@ class InventoryPage(BasePage):
     def show_inventory_list(self):
         """재고 목록 팝업 표시"""
         try:
+            if not self.data_manager.is_server_connected():
+                ErrorHandler.show_warning_message("서버 연결 오류", "서버에 연결되어 있지 않습니다. 서버 연결이 필요합니다.")
+                return
+                
             dialog = InventoryListDialog(self, self.data_manager)
             dialog.exec()
         except Exception as e:
             logger.error(f"재고 목록 팝업 표시 오류: {str(e)}")
             self.handle_data_fetch_error("재고 목록 표시", str(e))
-    
-    def update_connection_status(self):
-        """서버 연결 상태 업데이트"""
-        try:
-            if not hasattr(self, 'lbl_status'):
-                return
-                
-            if self.is_server_connected():
-                self.lbl_status.setText("서버 연결 상태: 연결됨")
-                self.lbl_status.setStyleSheet("color: green;")
-                
-                # 서버 연결 시 차트 업데이트
-                if hasattr(self, 'chart_widget'):
-                    self.chart_widget.update_chart()
-            else:
-                self.lbl_status.setText("서버 연결 상태: 연결 안됨")
-                self.lbl_status.setStyleSheet("color: red;")
-        except Exception as e:
-            logger.error(f"연결 상태 업데이트 오류: {str(e)}")
     
     def on_notification(self, message):
         """알림 발생 시 처리"""
@@ -315,9 +288,6 @@ class InventoryPage(BasePage):
             # 차트 업데이트
             if hasattr(self, 'chart_widget'):
                 self.chart_widget.update_chart()
-            
-            # 창고 데이터 업데이트
-            self.update_warehouse_data()
     
     def on_inventory_changed(self):
         """재고 데이터 변경 시 처리"""
@@ -509,8 +479,8 @@ class InventoryListDialog(QDialog):
     def fetch_inventory_data(self):
         """서버에서 재고 데이터 가져오기"""
         try:
-            # 서버 연결 확인
-            if not self.is_server_connected():
+            # 서버 연결 확인 - data_manager에 위임
+            if not self.data_manager.is_server_connected():
                 self.show_connection_error()
                 return
                 
@@ -549,26 +519,26 @@ class InventoryListDialog(QDialog):
             
             # 오류 메시지 표시
             ErrorHandler.show_error_message("오류", f"재고 데이터를 가져오는 중 오류가 발생했습니다: {str(e)}")
-
-        def is_server_connected(self):
-            """서버 연결 상태 확인"""
-            return self.data_manager and self.data_manager._server_connection and self.data_manager._server_connection.is_connected
-        
-        def show_connection_error(self):
-            """서버 연결 오류 표시"""
-            ErrorHandler.show_warning_message("서버 연결 오류", "서버에 연결되어 있지 않습니다. 서버 연결이 필요합니다.")
-            self.inventory_items = []
-        
-        def show_api_error(self, title, message):
-            """API 오류 표시"""
-            ErrorHandler.show_warning_message(title, message)
-        
-        def show_api_exception(self, title, exception):
-            """API 예외 표시"""
-            ErrorHandler.show_error_message(title, f"{title} 중 오류: {str(exception)}")
-        
-        def apply_search_filter(self):
-            """검색 및 필터 적용"""
+    
+    def is_server_connected(self):
+        """서버 연결 상태 확인 - data_manager에 위임"""
+        return self.data_manager and self.data_manager.is_server_connected()
+    
+    def show_connection_error(self):
+        """서버 연결 오류 표시"""
+        ErrorHandler.show_warning_message("서버 연결 오류", "서버에 연결되어 있지 않습니다. 서버 연결이 필요합니다.")
+        self.inventory_items = []
+    
+    def show_api_error(self, title, message):
+        """API 오류 표시"""
+        ErrorHandler.show_warning_message(title, message)
+    
+    def show_api_exception(self, title, exception):
+        """API 예외 표시"""
+        ErrorHandler.show_error_message(title, f"{title} 중 오류: {str(exception)}")
+    
+    def apply_search_filter(self):
+        """검색 및 필터 적용"""
         try:
             # 필터 조건 가져오기
             search_text = self.input_search.text().lower()
@@ -690,8 +660,8 @@ class InventoryListDialog(QDialog):
                             cell.setBackground(QColor(232, 234, 246))  # 재고 부족: 연한 푸른색
         except Exception as e:
             logger.error(f"테이블 업데이트 오류: {str(e)}")
-            ErrorHandler.show_warning_message("테이블 업데이트 오류", f"테이블 업데이트 중 오류가 발생했습니다: {str(e)}")
-    
+            self.handle_api_exception("테이블 업데이트 오류", e)    
+            
     def prev_page(self):
         """이전 페이지로 이동"""
         if self.current_page > 1:
@@ -706,5 +676,3 @@ class InventoryListDialog(QDialog):
             self.current_page += 1
             self.update_pagination()
             self.update_table()
-
-            

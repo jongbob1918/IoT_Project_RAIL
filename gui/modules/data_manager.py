@@ -33,7 +33,9 @@ class DataManager(QObject):
     expiry_data_changed = pyqtSignal()
     conveyor_status_changed = pyqtSignal()
     waiting_data_changed = pyqtSignal()  # 입고 대기 데이터 변경 시그널 추가
+    access_logs_changed = pyqtSignal()   # 출입 로그 변경 시그널 추가 
     notification_added = pyqtSignal(str)
+    server_connection_changed = pyqtSignal(bool) # 서버 연결 상태 변경 시그널 추가
     
     @classmethod
     def get_instance(cls):
@@ -126,6 +128,16 @@ class DataManager(QObject):
             "message": None
         }
         
+        # 데이터 타임스탬프 초기화 (마지막 업데이트 시간)
+        self._data_timestamps = {
+            "warehouse": None,
+            "inventory": None,
+            "expiry": None,
+            "conveyor": None,
+            "access_logs": None,
+            "waiting": None
+        }
+        
         # 데이터 폴링 스레드 시작
         self._running = True
         self.polling_thread = threading.Thread(target=self._poll_server_data, daemon=True)
@@ -137,45 +149,39 @@ class DataManager(QObject):
         """서버 연결 객체 설정"""
         self._server_connection = server_connection
         logger.info("서버 연결 객체 설정 완료")
+        
+        # 서버 연결 상태 변경 이벤트 연결
+        if hasattr(server_connection, 'connectionStatusChanged'):
+            server_connection.connectionStatusChanged.connect(self._handle_server_connection_changed)
+    
+    def _handle_server_connection_changed(self, connected, message=""):
+        """서버 연결 상태 변경 처리"""
+        self._server_connected = connected
+        self.server_connection_changed.emit(connected)
+        
+        # 서버 연결 되었을 때 즉시 데이터 갱신
+        if connected:
+            self._fetch_all_data()
+    
+    def is_server_connected(self):
+        """서버 연결 상태 반환 - 모든 페이지가 이 메서드를 사용해야 함"""
+        return self._server_connected and self._server_connection and self._server_connection.is_connected
     
     def _poll_server_data(self):
-        """서버에서 주기적으로 데이터를 폴링하는 스레드 함수"""
+        """주기적으로 서버 데이터 폴링 (일관된 5초 간격)"""
         logger.info("데이터 폴링 스레드 시작")
-        
-        # 오류 연속 발생 횟수 초기화
-        error_count = 0
-        
-        # 마지막 요청 시간 초기화
-        last_request_time = 0
         
         while self._running:
             try:
-                # 현재 시간 확인 - 적절한 간격으로 요청 (5초 이상)
-                current_time = time.time()
-                if (current_time - last_request_time) < 5:
-                    # 요청 간격이 너무 짧으면 대기
-                    time.sleep(1)
-                    continue
-                
-                # 요청 시간 갱신
-                last_request_time = current_time
-                
-                if self._server_connected and self._server_connection is not None:
-                    # 서버 데이터 가져오기
+                if self.is_server_connected():
+                    # 서버에 연결된 경우에만 데이터 폴링
                     self._fetch_all_data()
-                    
-                    # 연속 오류 발생 횟수 초기화
-                    error_count = 0
-                else:
-                    # 서버 연결 시도
-                    self._try_connect_server()
                 
-                # 요청 간격 유지를 위한 적절한 대기 시간
+                # 폴링 간격 - 항상 5초로 통일
                 time.sleep(5)
                 
             except Exception as e:
                 logger.error(f"데이터 폴링 중 오류: {str(e)}")
-                self._server_connected = False
                 
                 # 오류 정보 저장
                 self._last_error = {
@@ -184,25 +190,8 @@ class DataManager(QObject):
                     "message": str(e)
                 }
                 
-                # 연속 오류 발생 횟수 증가
-                error_count += 1
-                
-                # 알림 추가 (빈번한 알림 방지 - 처음 발생 시에만)
-                if error_count == 1:
-                    message = f"서버 데이터 폴링 오류: {str(e)}"
-                    self._add_notification_thread_safe(message)
-                
-                # 연속 오류가 5회 이상 발생하면 대기 시간 증가
-                if error_count > 5:
-                    error_wait_time = min(30, 5 * error_count)  # 최대 30초
-                    logger.warning(f"연속 오류 발생 ({error_count}회). {error_wait_time}초 대기 후 재시도")
-                    time.sleep(error_wait_time)
-                    continue
-                
-                # 일반적인 오류 발생 시 대기 시간
+                # 오류 발생 시에도 동일한 폴링 간격 유지
                 time.sleep(5)
-        
-        logger.info("데이터 폴링 스레드 종료")
     
     def _add_notification_thread_safe(self, message):
         """스레드 안전한 알림 추가 메서드"""
@@ -215,63 +204,17 @@ class DataManager(QObject):
             "timestamp": datetime.datetime.now().isoformat()
         })
     
-    def _try_connect_server(self):
-        """서버 연결 시도"""
-        if self._server_connection:
-            # 이미 연결된 경우 건너뛰기
-            if self._server_connection.is_connected:
-                self._server_connected = True
-                return True
-            
-            # 재연결 시도
-            if self._server_connection.connect_to_server():
-                self._server_connected = True
-                return True
-            else:
-                self._server_connected = False
-                return False
-        
-        return False
-    
-    def _fetch_data_safely(self, fetch_function, error_message, retry=True):
-        """안전하게 데이터 가져오기 위한 헬퍼 함수"""
-        if not self._server_connection or not self._server_connected:
-            logger.warning("서버 연결 없음 - 데이터를 가져올 수 없습니다.")
-            return False
-            
-        try:
-            # 함수 실행
-            fetch_function()
-            return True
-        except Exception as e:
-            logger.error(f"{error_message}: {str(e)}")
-            
-            # 오류 정보 저장
-            self._last_error = {
-                "time": datetime.datetime.now(),
-                "type": type(e).__name__,
-                "message": str(e)
-            }
-            
-            # 일시적인 연결 오류 시 재연결 시도
-            if retry and ("연결이 끊어졌습니다" in str(e) or "Connection" in str(e)):
-                logger.info("연결 오류 감지, 재연결 시도...")
-                if self._try_connect_server():
-                    logger.info("재연결 성공, 데이터 다시 가져오기 시도")
-                    return self._fetch_data_safely(fetch_function, error_message, retry=False)
-            
-            # 오류 알림 추가 (한 번만)
-            self.add_notification(f"데이터 가져오기 오류: {error_message}")
-            return False
-    
     def _fetch_all_data(self):
         """모든 서버 데이터 가져오기"""
         try:
+            # 각 데이터 폴링 - 타임스탬프를 확인하여 필요할 때만 갱신
             self._fetch_environment_data()
             self._fetch_inventory_data()
-            self._fetch_waiting_data()  # 입고 대기 데이터 가져오기 추가
+            self._fetch_waiting_data()
             self._fetch_expiry_data()
             self._fetch_conveyor_status()
+            self._fetch_access_logs()
+            
             logger.debug("모든 서버 데이터 가져오기 완료")
         except Exception as e:
             logger.error(f"서버 데이터 가져오기 실패: {str(e)}")
@@ -282,12 +225,21 @@ class DataManager(QObject):
                 "type": type(e).__name__,
                 "message": str(e)
             }
-            
-            raise
+    
+    def _should_update_data(self, data_type, min_interval=5):
+        """데이터 업데이트 필요성 확인 (중복 요청 방지)"""
+        current_time = datetime.datetime.now()
+        last_update = self._data_timestamps.get(data_type)
+        
+        # 마지막 업데이트가 없거나 최소 간격이 지났으면 업데이트 필요
+        if last_update is None or (current_time - last_update).total_seconds() >= min_interval:
+            self._data_timestamps[data_type] = current_time
+            return True
+        return False
     
     def _fetch_environment_data(self):
         """환경 데이터 가져오기"""
-        if not self._server_connection:
+        if not self.is_server_connected() or not self._should_update_data("warehouse"):
             return
         
         try:
@@ -300,14 +252,14 @@ class DataManager(QObject):
                 
                 for warehouse_id, data in warehouse_data.items():
                     if warehouse_id in self._warehouse_data:
-                        # JSON 구조에 맞게 데이터 맵핑 (current_temp, target_temp 등 필드명 확인)
+                        # JSON 구조에 맞게 데이터 맵핑
                         self._warehouse_data[warehouse_id]["temperature"] = data.get("current_temp", 0.0)
                         self._warehouse_data[warehouse_id]["target_temp"] = data.get("target_temp", 0.0)
                         self._warehouse_data[warehouse_id]["status"] = data.get("status", "알 수 없음")
                         self._warehouse_data[warehouse_id]["used"] = data.get("used", 0)
                         self._warehouse_data[warehouse_id]["capacity"] = data.get("capacity", 100)
                         
-                        # usage_percent 계산 - 서버에서 제공하지 않는 경우
+                        # usage_percent 계산
                         if "usage_percent" in data:
                             self._warehouse_data[warehouse_id]["usage_percent"] = data.get("usage_percent", 0)
                         elif self._warehouse_data[warehouse_id]["capacity"] > 0:
@@ -328,19 +280,17 @@ class DataManager(QObject):
                 "type": type(e).__name__,
                 "message": str(e)
             }
-            
-            raise
     
     def _fetch_inventory_data(self):
         """재고 데이터 가져오기"""
-        if not self._server_connection:
+        if not self.is_server_connected() or not self._should_update_data("inventory"):
             return
         
         try:
             # 재고 상태 조회 API 호출
             response = self._server_connection.get_inventory_status()
             
-            # 응답 처리 - JSON 데이터 구조에 맞게 수정
+            # 응답 처리
             if response and "success" in response and response["success"]:
                 data = response.get("data", {})
                 
@@ -375,19 +325,17 @@ class DataManager(QObject):
                 "type": type(e).__name__,
                 "message": str(e)
             }
-            
-            raise
     
     def _fetch_waiting_data(self):
-        """입고 대기 데이터 가져오기 - JSON 구조에 맞게 수정"""
-        if not self._server_connection:
+        """입고 대기 데이터 가져오기"""
+        if not self.is_server_connected() or not self._should_update_data("waiting"):
             return
         
         try:
             # 입고 대기 정보 조회 API 호출
             response = self._server_connection._send_request('GET', 'inventory/waiting')
             
-            # 응답 처리 - 'waiting' 필드 사용
+            # 응답 처리
             if response and response.get("success", True):
                 # 입고 대기 수량 업데이트
                 self._waiting_items = response.get("waiting", 0)
@@ -399,19 +347,12 @@ class DataManager(QObject):
         except Exception as e:
             logger.error(f"입고 대기 데이터 가져오기 오류: {str(e)}")
             
-            # 오류 정보 저장
-            self._last_error = {
-                "time": datetime.datetime.now(),
-                "type": type(e).__name__,
-                "message": str(e)
-            }
-            
             # 이 오류는 필수 데이터가 아니므로 무시하고 계속 진행
             pass
     
     def _fetch_expiry_data(self):
-        """유통기한 데이터 가져오기 - JSON 구조에 맞게 수정"""
-        if not self._server_connection:
+        """유통기한 데이터 가져오기"""
+        if not self.is_server_connected() or not self._should_update_data("expiry"):
             return
         
         try:
@@ -421,7 +362,7 @@ class DataManager(QObject):
             # 유통기한 경고 항목 조회 (7일 이내)
             alerts_response = self._server_connection.get_expiry_alerts(days=7)
             
-            # 응답 처리 - JSON 구조에 맞게 수정
+            # 응답 처리
             if expired_response and "success" in expired_response and expired_response["success"]:
                 self._expiry_data["over"] = expired_response.get("total_count", 0)
             
@@ -441,19 +382,17 @@ class DataManager(QObject):
                 "type": type(e).__name__,
                 "message": str(e)
             }
-            
-            raise
     
     def _fetch_conveyor_status(self):
-        """컨베이어 상태 가져오기 - JSON 구조에 맞게 수정"""
-        if not self._server_connection:
+        """컨베이어 상태 가져오기"""
+        if not self.is_server_connected() or not self._should_update_data("conveyor"):
             return
         
         try:
             # 분류기 상태 조회 API 호출
             response = self._server_connection.get_sorter_status()
             
-            # 응답 처리 - JSON 구조에 맞게 수정
+            # 응답 처리
             if response:
                 # is_running 필드를 통해 상태 결정
                 if "is_running" in response:
@@ -481,26 +420,49 @@ class DataManager(QObject):
                 "type": type(e).__name__,
                 "message": str(e)
             }
-            
-            raise
+    
+    def _fetch_access_logs(self):
+        """출입 로그 데이터 가져오기"""
+        if not self.is_server_connected() or not self._should_update_data("access_logs"):
+            return
         
+        try:
+            # 출입 로그 API 호출
+            response = self._server_connection.get_access_logs()
+            
+            # 응답 처리
+            if response and response.get("success", False):
+                self._access_logs = response.get("logs", [])
+                
+                # 변경 신호 발생
+                self.access_logs_changed.emit()
+                logger.debug(f"출입 로그 데이터 업데이트 완료: {len(self._access_logs)}건")
+            
+        except Exception as e:
+            logger.error(f"출입 로그 데이터 가져오기 오류: {str(e)}")
+            
+            # 오류 정보 저장
+            self._last_error = {
+                "time": datetime.datetime.now(),
+                "type": type(e).__name__,
+                "message": str(e)
+            }
+    
+    def refresh_access_logs(self):
+        """출입 로그 갱신 요청 - 외부에서 호출 가능"""
+        # 타임스탬프 재설정하여 강제 갱신
+        self._data_timestamps["access_logs"] = None
+        self._fetch_access_logs()
+    
     def control_conveyor(self, action):
-        """컨베이어 제어 함수 - JSON 구조에 맞게 수정
-        
-        Args:
-            action: 동작 (start, pause, stop)
-            
-        Returns:
-            응답 데이터
-        """
-        if not self._server_connection or not self._server_connected:
+        """컨베이어 제어 함수"""
+        if not self.is_server_connected():
             logger.warning("서버 연결 없음 - 컨베이어를 제어할 수 없습니다.")
             return {"success": False, "message": "서버 연결 없음"}
             
         try:
-            # 서버 API 호출 - 'action' 필드 사용 (PDF의 JSON 구조에 맞게)
+            # 서버 API 호출
             if action == "start":
-                # action 필드를 사용하는 JSON 요청
                 response = self._server_connection._send_request('POST', 'sort/control', {"action": "start"})
                 if response and "status" in response and response["status"] != "error":
                     self._conveyor_status = 1  # 가동중
@@ -510,8 +472,6 @@ class DataManager(QObject):
                         "message": response.get("message", "")}
                     
             elif action == "pause":
-                # 서버 API에 pause 기능이 있다면 호출, 없다면 stop과 동일하게 처리
-                # sort_api.py에는 pause 메서드가 보이지 않으므로 stop으로 대체
                 response = self._server_connection._send_request('POST', 'sort/control', {"action": "stop"})
                 if response and "status" in response and response["status"] != "error":
                     self._conveyor_status = 2  # 일시정지
@@ -542,6 +502,52 @@ class DataManager(QObject):
                 "message": str(e)
             }
             
+            return {"success": False, "message": str(e)}
+    
+    # 환경 제어 메서드 추가
+    def set_target_temperature(self, warehouse_id, target_temp):
+        """창고 목표 온도 설정"""
+        if not self.is_server_connected():
+            logger.warning("서버 연결 없음 - 온도를 설정할 수 없습니다.")
+            return {"success": False, "message": "서버 연결 없음"}
+        
+        try:
+            response = self._server_connection.set_target_temperature(warehouse_id, target_temp)
+            
+            # 성공 시 타임스탬프 초기화하여 다음 폴링에서 데이터 갱신
+            if response and response.get("success", False):
+                self._data_timestamps["warehouse"] = None
+            
+            return response
+        except Exception as e:
+            logger.error(f"온도 설정 오류: {str(e)}")
+            return {"success": False, "message": str(e)}
+    
+    # 출입 제어 메서드 추가
+    def open_door(self):
+        """출입문 열기 요청"""
+        if not self.is_server_connected():
+            logger.warning("서버 연결 없음 - 출입문을 열 수 없습니다.")
+            return {"success": False, "message": "서버 연결 없음"}
+        
+        try:
+            response = self._server_connection.open_door()
+            return response
+        except Exception as e:
+            logger.error(f"출입문 열기 오류: {str(e)}")
+            return {"success": False, "message": str(e)}
+    
+    def close_door(self):
+        """출입문 닫기 요청"""
+        if not self.is_server_connected():
+            logger.warning("서버 연결 없음 - 출입문을 닫을 수 없습니다.")
+            return {"success": False, "message": "서버 연결 없음"}
+        
+        try:
+            response = self._server_connection.close_door()
+            return response
+        except Exception as e:
+            logger.error(f"출입문 닫기 오류: {str(e)}")
             return {"success": False, "message": str(e)}
     
     # ==== 데이터 접근 메서드 ====
@@ -587,35 +593,6 @@ class DataManager(QObject):
         """마지막 오류 정보 반환"""
         return self._last_error
     
-    # ==== Dashboard.py와 연동하기 위한 특화된 메서드 ====
-    def get_progress_bar_values(self):
-        """창고별 프로그레스바 값 반환"""
-        return {
-            "A": self._warehouse_data["A"]["usage_percent"],
-            "B": self._warehouse_data["B"]["usage_percent"],
-            "C": self._warehouse_data["C"]["usage_percent"]
-        }
-    
-    def get_warehouse_temperatures(self):
-        """창고별 온도 값 반환"""
-        return {
-            "A": self._warehouse_data["A"]["temperature"],
-            "B": self._warehouse_data["B"]["temperature"],
-            "C": self._warehouse_data["C"]["temperature"]
-        }
-    
-    def get_warehouse_statuses(self):
-        """창고별 상태 반환"""
-        return {
-            "A": self._warehouse_data["A"]["status"],
-            "B": self._warehouse_data["B"]["status"],
-            "C": self._warehouse_data["C"]["status"]
-        }
-    
-    def get_expiry_counts(self):
-        """유통기한 경과/임박 개수 반환"""
-        return self._expiry_data
-    
     # ==== 상태 변경 메서드 ====
     def add_notification(self, message):
         """알림 목록에 메시지 추가"""
@@ -628,7 +605,9 @@ class DataManager(QObject):
     
     def update_server_connection_status(self, connected):
         """서버 연결 상태 업데이트"""
-        self._server_connected = connected
+        if self._server_connected != connected:
+            self._server_connected = connected
+            self.server_connection_changed.emit(connected)
         logger.info(f"서버 연결 상태 업데이트: {'연결됨' if connected else '연결 끊김'}")
     
     def shutdown(self):

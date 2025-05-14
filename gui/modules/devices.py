@@ -40,9 +40,6 @@ class DevicesPage(BasePage):
         # 분류 박스 재고량 초기화
         self.initialize_counters()
         
-        # UI 업데이트 타이머 설정
-        self.setup_update_timer()
-        
         # 데이터 변경 이벤트 연결
         self.connect_data_signals()
         
@@ -51,6 +48,9 @@ class DevicesPage(BasePage):
         
         # 버튼 스타일 설정
         self.setup_button_styles()
+        
+        # 최초 UI 업데이트
+        self.update_ui()
         
         logger.info("장치 관리 페이지 초기화 완료")
     
@@ -66,18 +66,22 @@ class DevicesPage(BasePage):
         self.waiting_items = 0
         self.total_processed = 0
     
-    def setup_update_timer(self):
-        """타이머 설정"""
-        self.update_timer = QTimer(self)
-        self.update_timer.timeout.connect(self.update_ui)
-        self.update_timer.start(1000)  # 1초 간격으로 UI 업데이트
-    
     def connect_data_signals(self):
         """데이터 변경 이벤트 연결"""
         self.data_manager.conveyor_status_changed.connect(self.update_conveyor_status)
         self.data_manager.notification_added.connect(self.on_notification)
-        # 대기 항목 데이터용 시그널 연결 추가
         self.data_manager.inventory_data_changed.connect(self.update_ui)
+        self.data_manager.waiting_data_changed.connect(self.update_ui)
+        
+        # 서버 이벤트 연결
+        if hasattr(self.data_manager, '_server_connection') and hasattr(self.data_manager._server_connection, 'eventReceived'):
+            self.data_manager._server_connection.eventReceived.connect(self.handle_server_event)
+    
+    def handle_server_event(self, category, action, payload):
+        """서버 이벤트 처리"""
+        # 분류기 관련 이벤트인 경우 처리
+        if category == "sorter":
+            self.handleSorterEvent(action, payload)
     
     def connect_button_signals(self):
         """버튼 이벤트 연결"""
@@ -164,7 +168,7 @@ class DevicesPage(BasePage):
             self.add_log_message(f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 분류기 시작 요청")
             
             # 서버 연결 확인
-            if not self.is_server_connected():
+            if not self.data_manager.is_server_connected():
                 self.show_status_message("서버에 연결되어 있지 않습니다.", is_error=True)
                 return
             
@@ -188,18 +192,9 @@ class DevicesPage(BasePage):
                 self.show_status_message(f"분류기 시작 실패: {error_msg}", is_error=True)
                 self.add_log_message(f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 분류기 시작 실패: {error_msg}")
                 
-                # 에러 처리 개선 - 상세 에러 메시지
-                if "error" in result and "code" in result["error"]:
-                    error_code = result["error"]["code"]
-                    if error_code == "E001":
-                        ErrorHandler.show_error_message("하드웨어 오류", "분류기 하드웨어에 문제가 발생했습니다. 관리자에게 문의하세요.")
-                    elif error_code == "E002":
-                        ErrorHandler.show_error_message("통신 오류", "분류기와의 통신에 문제가 발생했습니다. 네트워크 연결을 확인하세요.")
-                    else:
-                        ErrorHandler.show_error_message("분류기 오류", f"분류기 작동 중 오류가 발생했습니다: {error_msg}")
-                else:
-                    ErrorHandler.show_error_message("분류기 오류", f"분류기 작동 중 오류가 발생했습니다: {error_msg}")
-        
+                #  에러 메시지
+                self.handle_api_error("분류기 오류", error_msg)
+                        
         except Exception as e:
             logger.error(f"분류기 시작 중 오류: {str(e)}")
             self.show_status_message(f"분류기 시작 오류: {str(e)}", is_error=True)
@@ -211,7 +206,7 @@ class DevicesPage(BasePage):
             self.add_log_message(f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 분류기 일시정지 요청")
             
             # 서버 연결 확인
-            if not self.is_server_connected():
+            if not self.data_manager.is_server_connected():
                 self.show_status_message("서버에 연결되어 있지 않습니다.", is_error=True)
                 return
             
@@ -249,7 +244,7 @@ class DevicesPage(BasePage):
             self.add_log_message(f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 분류기 정지 요청")
             
             # 서버 연결 확인
-            if not self.is_server_connected():
+            if not self.data_manager.is_server_connected():
                 self.show_status_message("서버에 연결되어 있지 않습니다.", is_error=True)
                 return
             
@@ -322,76 +317,45 @@ class DevicesPage(BasePage):
         """UI 요소 업데이트"""
         try:
             # 서버 연결 상태 확인
-            if self.is_server_connected():
-                # 서버에서 최신 데이터 가져오기
-                try:
-                    # 재고 데이터 가져오기
-                    warehouse_data = self.data_manager.get_warehouse_data()
-                    
-                    # 재고 라벨 업데이트
-                    self.inventory_A.setText(f"{warehouse_data['A']['used']}개")
-                    self.inventory_B.setText(f"{warehouse_data['B']['used']}개")
-                    self.inventory_C.setText(f"{warehouse_data['C']['used']}개")
-                    
-                    # 대기 항목 데이터 가져오기 - 개선된 부분
-                    # 서버 연결 객체를 통해 API 호출하여 데이터 가져오기
-                    waiting_data = None
-                    
-                    # 서버 연결이 유효하면 데이터 요청
-                    if self.data_manager._server_connection and self.data_manager._server_connection.is_connected:
-                        try:
-                            # 입고 대기 정보 조회 API 호출
-                            response = self.data_manager._server_connection._send_request('GET', 'inventory/waiting')
-                            if response and response.get("success", True):
-                                waiting_data = response.get("waiting", 0)
-                                
-                                # 데이터 매니저에 대기 정보 저장 (data_manager 클래스에 필드 추가 필요)
-                                if hasattr(self.data_manager, "_waiting_items"):
-                                    self.data_manager._waiting_items = waiting_data
-                                else:
-                                    self.data_manager._waiting_items = waiting_data
-                        except Exception as e:
-                            logger.error(f"대기 항목 데이터 요청 오류: {str(e)}")
-                    
-                    # 대기 건수 표시 (서버 데이터 또는 캐시된 데이터 사용)
-                    if waiting_data is not None:
-                        waiting_count = waiting_data
-                    elif hasattr(self.data_manager, "_waiting_items"):
-                        waiting_count = self.data_manager._waiting_items
-                    else:
-                        waiting_count = 0  # 데이터가 없는 경우 기본값
-                    
-                    self.inventory_waiting.setText(f"{waiting_count}개")
-                    
-                    # 에러 건수는 서버에서 제공하지 않을 경우 로그에서 계산
-                    error_count = 0
-                    if hasattr(self, 'list_logs'):
-                        for i in range(self.list_logs.count()):
-                            log_text = self.list_logs.item(i).text()
-                            if "오류" in log_text or "실패" in log_text:
-                                error_count += 1
-                    
-                    self.inventory_error.setText(f"{error_count}개")
-                    
-                    # 총 처리 건수 = 창고 재고 합계
-                    total_count = sum([warehouse_data[wh]['used'] for wh in ['A', 'B', 'C']])
-                    
-                    self.inventory_waiting_2.setText(f"{total_count}개")
-                    
-                    # 오류는 항상 빨간색
-                    if error_count > 0:
-                        self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
-                    else:
-                        self.inventory_error.setStyleSheet("color: #757575;")
-                    
-                    # 컨베이어 제어 버튼 활성화
-                    self.btn_start.setEnabled(True)
-                    self.btn_pause.setEnabled(True)
-                    self.btn_stop.setEnabled(True)
-                    
-                except Exception as e:
-                    logger.error(f"재고 데이터 가져오기 오류: {str(e)}")
-                    self.handle_data_fetch_error("재고 데이터 가져오기", str(e))
+            if self.data_manager.is_server_connected():
+                # 재고 데이터 가져오기
+                warehouse_data = self.data_manager.get_warehouse_data()
+                
+                # 재고 라벨 업데이트
+                self.inventory_A.setText(f"{warehouse_data['A']['used']}개")
+                self.inventory_B.setText(f"{warehouse_data['B']['used']}개")
+                self.inventory_C.setText(f"{warehouse_data['C']['used']}개")
+                
+                # 대기 항목 데이터 가져오기
+                waiting_count = self.data_manager.get_waiting_items()
+                self.inventory_waiting.setText(f"{waiting_count}개")
+                
+                # 에러 건수는 서버에서 제공하지 않을 경우 로그에서 계산
+                error_count = 0
+                if hasattr(self, 'list_logs'):
+                    for i in range(self.list_logs.count()):
+                        log_text = self.list_logs.item(i).text()
+                        if "오류" in log_text or "실패" in log_text:
+                            error_count += 1
+                
+                self.inventory_error.setText(f"{error_count}개")
+                
+                # 총 처리 건수 = 창고 재고 합계
+                total_count = sum([warehouse_data[wh]['used'] for wh in ['A', 'B', 'C']])
+                
+                self.inventory_waiting_2.setText(f"{total_count}개")
+                
+                # 오류는 항상 빨간색
+                if error_count > 0:
+                    self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
+                else:
+                    self.inventory_error.setStyleSheet("color: #757575;")
+                
+                # 컨베이어 제어 버튼 활성화
+                self.btn_start.setEnabled(True)
+                self.btn_pause.setEnabled(True)
+                self.btn_stop.setEnabled(True)
+                
             else:
                 # 서버 연결이 없는 경우 UI 초기화
                 self.reset_ui_for_disconnection()
@@ -459,14 +423,6 @@ class DevicesPage(BasePage):
                 # 로그 목록에 추가
                 self.add_log_message(log_message)
                 
-                # 대기 항목 갱신 시도 (서버에서 대기 항목 정보를 제공하면 API 호출해서 갱신)
-                if self.data_manager._server_connection and self.data_manager._server_connection.is_connected:
-                    try:
-                        # 입고 대기 정보 업데이트를 위한 UI 갱신 호출
-                        QTimer.singleShot(500, self.update_ui)
-                    except Exception as e:
-                        logger.error(f"대기 항목 업데이트 오류: {str(e)}")
-                
                 logger.info(f"아이템 처리: {log_message}")
         except Exception as e:
             logger.error(f"분류기 이벤트 처리 오류: {str(e)}")
@@ -474,7 +430,7 @@ class DevicesPage(BasePage):
     
     # === BasePage 메서드 오버라이드 ===
     def on_server_connected(self):
-
+        """서버 연결 성공 시 처리"""
         logger.info("서버 연결 성공")
         
         # 버튼 활성화
@@ -521,5 +477,3 @@ class DevicesPage(BasePage):
             ErrorHandler.show_warning_message("접근 권한 오류", f"데이터에 접근할 권한이 없습니다: {error_message}")
         else:
             ErrorHandler.show_warning_message(context, error_message)
-
-    

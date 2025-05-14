@@ -35,8 +35,8 @@ class DashboardPage(BasePage):
         self.data_manager = data_manager if data_manager else DataManager.get_instance()
         self.set_data_manager(self.data_manager)  # 부모 클래스 메서드 호출
         
-        # 타이머 설정
-        self.setup_update_timer()
+        # 시간 표시를 위한 타이머 설정 (필수 기능이므로 유지)
+        self.setup_time_timer()
         
         # 초기화
         self.setup_progress_bars()
@@ -57,11 +57,11 @@ class DashboardPage(BasePage):
         
         logger.info("대시보드 페이지 초기화 완료")
     
-    def setup_update_timer(self):
-        """타이머 설정"""
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_time_and_status)
-        self.timer.start(1000)  # 1초마다 업데이트
+    def setup_time_timer(self):
+        """시간 표시용 타이머 설정"""
+        self.time_timer = QTimer(self)
+        self.time_timer.timeout.connect(self.update_time)
+        self.time_timer.start(1000)  # 1초마다 시간만 업데이트
     
     def connect_data_signals(self):
         """데이터 변경 이벤트 연결"""
@@ -115,14 +115,11 @@ class DashboardPage(BasePage):
             # 알림 없음 메시지 추가
             self.noti_list.addItem("알림이 없습니다.")
     
-    def update_time_and_status(self):
-        """현재 시간 및 입고 현황 업데이트"""
+    def update_time(self):
+        """현재 시간만 업데이트"""
         # 현재 시간 업데이트
         current_datetime = QDateTime.currentDateTime()
         self.datetime.setText(current_datetime.toString("yyyy.MM.dd. hh:mm:ss"))
-        
-        # 입고 현황 업데이트
-        self.update_inventory_status()
     
     def update_inventory_status(self):
         """입고 현황 업데이트"""
@@ -296,5 +293,3 @@ class DashboardPage(BasePage):
             self.add_notification(f"정보: {message}")
         else:
             self.add_notification(message)
-
-    

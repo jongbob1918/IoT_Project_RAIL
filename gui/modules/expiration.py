@@ -54,9 +54,6 @@ class ExpirationPage(BasePage):
         # 버튼 스타일 설정
         self.setup_button_styles()
         
-        # 타이머 설정 (데이터 갱신)
-        self.setup_update_timer()
-        
         # 데이터 변경 이벤트 연결
         self.connect_data_signals()
         
@@ -99,35 +96,22 @@ class ExpirationPage(BasePage):
             }
         """)
     
-    def setup_update_timer(self):
-        """데이터 업데이트 타이머 설정"""
-        self.update_timer = QTimer(self)
-        self.update_timer.timeout.connect(self.check_for_updates)
-        self.update_timer.start(10000)  # 10초마다 업데이트 확인
-    
     def connect_data_signals(self):
         """데이터 변경 이벤트 연결"""
-        self.data_manager.expiry_data_changed.connect(self.check_for_updates)
+        self.data_manager.expiry_data_changed.connect(self.on_expiry_data_changed)
         self.data_manager.notification_added.connect(self.on_notification)
     
     def on_notification(self, message):
         """알림 발생 시 처리"""
         # 유통기한 관련 알림인 경우 처리
         if "유통기한" in message or "만료" in message or "경과" in message:
-            self.check_for_updates()
+            # 알림만 처리하고 데이터 업데이트는 이벤트에 의해 처리됨
+            pass
     
-    def check_for_updates(self):
-        """데이터 업데이트 확인"""
-        try:
-            # 유통기한 데이터 확인
-            expiry_data = self.data_manager.get_expiry_data()
-            
-            # 유통기한 경과 또는 임박 상품이 있는 경우 화면 갱신
-            if expiry_data['over'] > 0 or expiry_data['soon'] > 0:
-                self.search_expired_items()
-        except Exception as e:
-            logger.error(f"데이터 업데이트 확인 오류: {str(e)}")
-            self.show_status_message("데이터 업데이트 확인 오류", is_error=True)
+    def on_expiry_data_changed(self):
+        """유통기한 데이터 변경 이벤트 처리"""
+        # 데이터가 변경되었으므로 UI 갱신
+        self.search_expired_items()
     
     def clear_items_layout(self):
         """기존 아이템 위젯을 모두 제거합니다."""
@@ -203,19 +187,18 @@ class ExpirationPage(BasePage):
             # 기존 데이터 초기화
             self.clear_items_layout()
             
-            # 서버 연결 상태 확인
-            if not self.is_server_connected():
+            # 서버 연결 상태 확인 - data_manager로 위임
+            if not self.data_manager.is_server_connected():
                 self.show_connection_error_message()
                 return
                 
-            # 서버에 API 요청
-            server_conn = self.data_manager._server_connection
+            # 데이터 매니저를 통해 API 요청
             try:
                 # 유통기한 경과 항목 가져오기
-                expired_items = server_conn.get_expired_items()
+                expired_items = self.data_manager._server_connection.get_expired_items()
                 
                 # 유통기한 경고 항목 가져오기 (7일 이내)
-                alert_items = server_conn.get_expiry_alerts(days=7)
+                alert_items = self.data_manager._server_connection.get_expiry_alerts(days=7)
                 
                 # 데이터 병합 및 가공
                 items = []
@@ -250,7 +233,9 @@ class ExpirationPage(BasePage):
                 self.handle_api_exception("유통기한 데이터 조회", e)
                 
                 # 오류 메시지 표시
-                error_label = QLabel(f"서버에서 데이터를 가져오는 중 오류가 발생했습니다: {str(e)}")
+                self.handle_api_exception("데이터 가져오기 오류", e)
+                # UI에 오류 메시지 표시
+                error_label = QLabel("데이터를 가져올 수 없습니다. 연결 상태를 확인하세요.")
                 error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 error_label.setStyleSheet("font-size: 14px; color: #F44336;")
                 self.scroll_layout.addWidget(error_label)
@@ -302,11 +287,3 @@ class ExpirationPage(BasePage):
         
         self.show_status_message("서버 연결 끊김, 데이터를 가져올 수 없습니다.", is_error=True)
         logger.warning("서버 연결 실패")
-    
-    def handle_data_fetch_error(self, context, error_message):
-        """데이터 가져오기 오류 처리"""
-        logger.error(f"{context}: {error_message}")
-        self.show_status_message(f"오류: {error_message}", is_error=True)
-        ErrorHandler.show_warning_message(context, error_message)
-
-    

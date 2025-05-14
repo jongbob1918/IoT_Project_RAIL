@@ -2,7 +2,7 @@ import logging
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import pyqtSlot
 
-from modules.error_handler import ErrorHandler  # 오류 처리 모듈 가져오기
+from modules.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
 
@@ -21,30 +21,28 @@ class BasePage(QWidget):
         """데이터 관리자 설정"""
         self.data_manager = data_manager
         
-    @pyqtSlot(bool, str)
-    def onConnectionStatusChanged(self, connected, message=""):
+        # 서버 연결 상태 변경 이벤트 연결
+        if hasattr(self.data_manager, 'server_connection_changed'):
+            self.data_manager.server_connection_changed.connect(self.on_server_connection_changed)
+        
+    @pyqtSlot(bool)
+    def on_server_connection_changed(self, connected):
         """서버 연결 상태 변경 시 호출되는 메서드"""
         try:
             if connected:
                 logger.info(f"{self.page_name} 페이지: 서버 연결됨")
                 self.on_server_connected()
             else:
-                logger.warning(f"{self.page_name} 페이지: 서버 연결 끊김 - {message}")
+                logger.warning(f"{self.page_name} 페이지: 서버 연결 끊김")
                 self.on_server_disconnected()
         except Exception as e:
             logger.error(f"연결 상태 변경 처리 중 오류 발생: {str(e)}")
     
     def is_server_connected(self):
-        """서버 연결 상태 확인 (유틸리티 메서드)"""
-        if not self.data_manager:
-            return False
-            
-        try:
-            server_conn = self.data_manager._server_connection
-            return server_conn and hasattr(server_conn, 'is_connected') and server_conn.is_connected
-        except Exception as e:
-            logger.error(f"서버 연결 상태 확인 중 오류 발생: {str(e)}")
-            return False
+        """서버 연결 상태 확인 (data_manager에 위임)"""
+        if self.data_manager and hasattr(self.data_manager, 'is_server_connected'):
+            return self.data_manager.is_server_connected()
+        return False
     
     def on_server_connected(self):
         """서버 연결 시 처리 - 자식 클래스에서 오버라이드"""
@@ -145,3 +143,20 @@ class BasePage(QWidget):
                 ErrorHandler.show_warning_message(context, error_message)
         except Exception as e:
             logger.error(f"데이터 가져오기 오류 처리 중 예외 발생: {str(e)}")
+
+    def handle_validation_error(self, context, error_message):
+        """
+        입력 값 유효성 검증 오류 처리
+        
+        Args:
+            context: 오류 컨텍스트 (어떤 입력 필드 유효성 검증 중 발생했는지)
+            error_message: 오류 메시지
+        """
+        try:
+            logger.warning(f"{context} 유효성 검증 실패: {error_message}")
+            self.show_status_message(f"오류: {error_message}", is_error=True)
+            
+            if hasattr(ErrorHandler, 'show_warning_message'):
+                ErrorHandler.show_warning_message(context, error_message)
+        except Exception as e:
+            logger.error(f"유효성 검증 오류 처리 중 예외 발생: {str(e)}")

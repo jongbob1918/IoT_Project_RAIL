@@ -48,19 +48,10 @@ class EnvironmentPage(BasePage):
         # 초기 UI 업데이트
         self.update_ui()
         
-        # UI 업데이트 타이머 설정
-        self.setup_update_timer()
-        
         # 데이터 변경 이벤트 연결
         self.connect_data_signals()
         
         logger.info("환경 관리 페이지 초기화 완료")
-    
-    def setup_update_timer(self):
-        """타이머 설정"""
-        self.update_timer = QTimer(self)
-        self.update_timer.timeout.connect(self.update_ui)
-        self.update_timer.start(1000)  # 1초 간격으로 UI 업데이트
     
     def initialize_warehouse_data(self):
         """초기 창고 상태 정보 설정"""
@@ -134,6 +125,16 @@ class EnvironmentPage(BasePage):
         """데이터 변경 이벤트 연결"""
         self.data_manager.warehouse_data_changed.connect(self.update_warehouse_data)
         self.data_manager.notification_added.connect(self.on_notification)
+        
+        # 서버 이벤트 연결
+        if hasattr(self.data_manager, '_server_connection') and hasattr(self.data_manager._server_connection, 'eventReceived'):
+            self.data_manager._server_connection.eventReceived.connect(self.handle_server_event)
+    
+    def handle_server_event(self, category, action, payload):
+        """서버 이벤트 처리"""
+        # 환경 관련 이벤트인 경우 처리
+        if category == "environment":
+            self.handleEnvironmentEvent(action, payload)
     
     def update_warehouse_data(self):
         """데이터 관리자로부터 창고 데이터 업데이트"""
@@ -179,7 +180,8 @@ class EnvironmentPage(BasePage):
         """알림 발생 시 처리"""
         # 환경 관련 알림인 경우 처리
         if "온도" in message or "창고" in message:
-            self.update_warehouse_data()
+            # 알림만 처리하고 데이터 업데이트는 이벤트에 의해 처리됨
+            pass
     
     def update_ui(self):
         """UI 업데이트"""
@@ -231,29 +233,27 @@ class EnvironmentPage(BasePage):
             if target_temp < temp_min:
                 target_temp = temp_min
                 widgets["temp_input"].setText(f"{temp_min}")
-                ErrorHandler.show_warning_message("입력 오류", f"최소 온도는 {temp_min}°C입니다.")
+                self.handle_data_fetch_error("온도 설정", f"최소 온도는 {temp_min}°C입니다.")
                 return
             elif target_temp > temp_max:
                 target_temp = temp_max
                 widgets["temp_input"].setText(f"{temp_max}")
-                ErrorHandler.show_warning_message("입력 오류", f"최대 온도는 {temp_max}°C입니다.")
+                self.handle_data_fetch_error("온도 설정", f"최대 온도는 {temp_max}°C입니다.")
                 return
             
             # 기존 값과 다른 경우에만 서버에 요청
             if target_temp != self.warehouses[wh_id]["target_temp"]:
                 # 서버 연결 확인
-                if not self.is_server_connected():
+                if not self.data_manager.is_server_connected():
                     self.handle_connection_error("온도 설정")
                     return
                     
                 try:
-                    # 서버 API 호출 - API 구조에 맞게 데이터 전송
-                    # PDF에 있는 JSON 구조에 맞게 수정: warehouse와 temperature 키 사용
-                    server_conn = self.data_manager._server_connection
-                    response = server_conn.set_target_temperature(wh_id, target_temp)
+                    # 서버 API 호출 - 데이터 매니저를 통해 처리
+                    response = self.data_manager.set_target_temperature(wh_id, target_temp)
                     
                     # 응답 처리
-                    if response and response.get("status") == "success":
+                    if response and response.get("success", False):
                         # 타겟 온도 업데이트
                         self.warehouses[wh_id]["target_temp"] = target_temp
                         
@@ -286,7 +286,7 @@ class EnvironmentPage(BasePage):
     def handleEnvironmentEvent(self, action, payload):
         """서버로부터 환경 이벤트 처리"""
         try:
-            # temperature_update 액션 처리 - PDF의 JSON 구조에 맞게 수정
+            # temperature_update 액션 처리 - JSON 구조에 맞게 수정
             if action == "temperature_update" and "warehouse_id" in payload and "current_temp" in payload:
                 wh_id = payload.get("warehouse_id")
                 temperature = payload.get("current_temp")  # current_temp 필드 사용
@@ -306,8 +306,7 @@ class EnvironmentPage(BasePage):
         """서버 연결 성공 시 처리 - 기본 클래스 메서드 오버라이드"""
         self.data_manager.add_notification("서버에 연결되었습니다. 환경 제어 시스템 활성화됨.")
         
-        # 서버에서 현재 온도 데이터 가져오기
-        self.update_warehouse_data()
+        # 서버에서 현재 온도 데이터는 데이터 매니저가 자동으로 가져옴
         
         logger.info("서버 연결 성공")
     
@@ -323,11 +322,3 @@ class EnvironmentPage(BasePage):
         self.update_ui()
         
         logger.warning("서버 연결 실패")
-    
-    def handle_data_fetch_error(self, context, error_message):
-        """데이터 가져오기 오류 처리"""
-        logger.error(f"{context}: {error_message}")
-        self.data_manager.add_notification(f"오류: {context} - {error_message}")
-        ErrorHandler.show_warning_message(context, error_message)
-
-    
