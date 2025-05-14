@@ -43,19 +43,24 @@ class SortController:
         
         logger.info("분류기 컨트롤러 초기화 완료")
 
-    
-    def _register_handlers(self):
+
         """TCP 핸들러에 이벤트 핸들러 등록"""
-        # 매핑된 이름을 사용하여 핸들러 등록
+        # 원본 프로토콜 형식으로 등록 (E, C, R, X)
+        self.tcp_handler.register_device_handler('S', 'E', self.handle_event)
+        self.tcp_handler.register_device_handler('S', 'R', self.handle_response)
+        self.tcp_handler.register_device_handler('S', 'X', self.handle_error)
+        self.tcp_handler.register_device_handler('S', 'C', self.handle_command)  # 명령 핸들러 추가
+        
+        # 매핑된 디바이스 ID로도 등록
+        self.tcp_handler.register_device_handler('sort_controller', 'E', self.handle_event)
+        self.tcp_handler.register_device_handler('sort_controller', 'R', self.handle_response)
+        self.tcp_handler.register_device_handler('sort_controller', 'X', self.handle_error)
+        self.tcp_handler.register_device_handler('sort_controller', 'C', self.handle_command)  # 명령 핸들러 추가
+        
+        # 이전 방식 호환성 유지
         self.tcp_handler.register_device_handler('sort_controller', 'evt', self.handle_event)
         self.tcp_handler.register_device_handler('sort_controller', 'res', self.handle_response)
         self.tcp_handler.register_device_handler('sort_controller', 'err', self.handle_error)
-        
-        # 또는 원래 ID로도 등록하여 둘 다 처리 가능하게
-        self.tcp_handler.register_device_handler('S', 'evt', self.handle_event)
-        self.tcp_handler.register_device_handler('S', 'res', self.handle_response)
-        self.tcp_handler.register_device_handler('S', 'err', self.handle_error)
-        self.tcp_handler.register_device_handler(DEVICE_SORTER, MSG_ERROR, self.handle_error)
     
     def handle_event(self, message):
         """분류기 이벤트 처리"""
@@ -100,6 +105,45 @@ class SortController:
                 logger.debug("명령 실행 성공 응답 수신")
             else:
                 logger.debug(f"알 수 없는 응답: {content}")
+    
+    def handle_command(self, message):
+        """명령 메시지 처리 - 'C' 타입 메시지"""
+        if 'content' not in message:
+            return
+        
+        content = message['content']
+        logger.debug(f"분류기 명령 수신: {content}")
+        
+        # SC 접두사 제거 (있는 경우)
+        if content.startswith('SC'):
+            content = content[2:]
+        
+        # 명령 타입별 처리
+        if content.startswith('st'):
+            # 시작 명령
+            self.start_sorter()
+            return True
+        
+        elif content.startswith('sp'):
+            # 정지 명령
+            self.stop_sorter()
+            return True
+        
+        elif content.startswith('ps'):
+            # 일시정지 명령
+            if hasattr(self, 'pause_sorter'):
+                self.pause_sorter()
+                return True
+        
+        elif content.startswith('so') and len(content) >= 3:
+            # 분류 명령 - 'soA', 'soB', 'soC'
+            zone = content[2:3]
+            self._send_sort_command(zone)
+            return True
+        
+        # 이 외의 경우 로그로 기록
+        logger.debug(f"처리되지 않은 명령: {content}")
+        return False
     
     def handle_error(self, message):
         """오류 처리"""

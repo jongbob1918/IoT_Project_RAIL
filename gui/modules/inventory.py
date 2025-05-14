@@ -465,33 +465,33 @@ class InventoryListDialog(QDialog):
             # 필터 적용
             self.apply_search_filter()
         
-    except Exception as e:
-        logger.error(f"fetch_inventory_data 실행 중 오류: {str(e)}")
-        self.inventory_items = []
-        self.apply_search_filter()
-        
-        # 오류 메시지 표시
-        ErrorHandler.show_error_message("오류", f"재고 데이터를 가져오는 중 오류가 발생했습니다: {str(e)}")
+        except Exception as e:
+            logger.error(f"fetch_inventory_data 실행 중 오류: {str(e)}")
+            self.inventory_items = []
+            self.apply_search_filter()
+            
+            # 오류 메시지 표시
+            ErrorHandler.show_error_message("오류", f"재고 데이터를 가져오는 중 오류가 발생했습니다: {str(e)}")
 
-    def is_server_connected(self):
-        """서버 연결 상태 확인"""
-        return self.data_manager and self.data_manager._server_connection and self.data_manager._server_connection.is_connected
-    
-    def show_connection_error(self):
-        """서버 연결 오류 표시"""
-        ErrorHandler.show_warning_message("서버 연결 오류", "서버에 연결되어 있지 않습니다. 서버 연결이 필요합니다.")
-        self.inventory_items = []
-    
-    def show_api_error(self, title, message):
-        """API 오류 표시"""
-        ErrorHandler.show_warning_message(title, message)
-    
-    def show_api_exception(self, title, exception):
-        """API 예외 표시"""
-        ErrorHandler.show_error_message(title, f"{title} 중 오류: {str(exception)}")
-    
-    def apply_search_filter(self):
-        """검색 및 필터 적용"""
+        def is_server_connected(self):
+            """서버 연결 상태 확인"""
+            return self.data_manager and self.data_manager._server_connection and self.data_manager._server_connection.is_connected
+        
+        def show_connection_error(self):
+            """서버 연결 오류 표시"""
+            ErrorHandler.show_warning_message("서버 연결 오류", "서버에 연결되어 있지 않습니다. 서버 연결이 필요합니다.")
+            self.inventory_items = []
+        
+        def show_api_error(self, title, message):
+            """API 오류 표시"""
+            ErrorHandler.show_warning_message(title, message)
+        
+        def show_api_exception(self, title, exception):
+            """API 예외 표시"""
+            ErrorHandler.show_error_message(title, f"{title} 중 오류: {str(exception)}")
+        
+        def apply_search_filter(self):
+            """검색 및 필터 적용"""
         try:
             # 필터 조건 가져오기
             search_text = self.input_search.text().lower()
