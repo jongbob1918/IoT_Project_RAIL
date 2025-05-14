@@ -248,6 +248,8 @@ class ServerConnection(QObject):
         Returns:
             응답 데이터 (dict) 또는 None (오류 시)
         """
+        if not endpoint.startswith('/'):
+            endpoint = '/' + endpoint
         url = f"{self.api_base_url}/{endpoint}"
         
         try:
@@ -461,7 +463,7 @@ class ServerConnection(QObject):
     
     def get_environment_status(self):
         """전체 환경 상태 조회"""
-        response = self._send_request('GET', 'environment/environment/status')
+        response = self._send_request('GET', 'environment/status')
         standardized = self._standardize_response(response, "환경 상태 조회")
         
         # 응답 데이터가 올바른 구조인지 확인
@@ -700,3 +702,46 @@ class ServerConnection(QObject):
             "last_error_time": None,
             "last_error_message": None
         }
+    
+    def test_connection(self):
+        """서버 연결 테스트"""
+        try:
+            response = self._send_request('GET', 'debug/ping')
+            if response and response.get("success", False):
+                logger.info("서버 연결 테스트 성공")
+                return True, response
+            else:
+                error_msg = "응답 성공 필드 없음" if response else "응답 없음"
+                logger.warning(f"서버 연결 테스트 실패: {error_msg}")
+                return False, response
+        except Exception as e:
+            logger.error(f"연결 테스트 중 오류: {str(e)}")
+            return False, {"error": str(e)}
+        
+    def test_debug_apis(self):
+        """디버그 API 테스트"""
+        results = {}
+        
+        # 핑 테스트
+        try:
+            ping_response = self._send_request('GET', 'debug/ping')
+            results["ping"] = ping_response
+        except Exception as e:
+            results["ping"] = {"error": str(e)}
+        
+        # 분류기 컨트롤러 디버그
+        try:
+            sort_debug = self._send_request('GET', 'debug/sort-controller')
+            results["sort_controller"] = sort_debug
+        except Exception as e:
+            results["sort_controller"] = {"error": str(e)}
+        
+        return results
+
+    # sort 관련 API 호출 메서드에 상세 로깅 추가
+    def get_sorter_status(self):
+        """분류기 상태 조회"""
+        logger.info("분류기 상태 조회 API 호출 시작")
+        response = self._send_request('GET', 'sort/status')
+        logger.info(f"분류기 상태 조회 API 응답: {response}")
+        return self._standardize_response(response, "분류기 상태 조회")

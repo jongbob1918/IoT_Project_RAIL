@@ -14,6 +14,7 @@ from controllers.sort_controller import SortController
 from utils.tcp_handler import TCPHandler
 from utils.multi_tcp_handler import MultiTCPHandler
 from api import set_controller, register_controller  # 컨트롤러 관리 함수 임포트
+from api.sort_api import init_controller  # init_controller 함수 직접 임포트
 
 try:
     from utils.tcp_debug_helper import *
@@ -150,6 +151,13 @@ controllers = init_controllers()
 # 이전 버전 호환성을 위한 설정
 sort_controller = controllers.get("sort")
 set_controller(sort_controller)  # API에 기본 컨트롤러 등록
+
+# 분류기 컨트롤러 초기화 확인 및 블루프린트에 등록
+if sort_controller:
+    logger.info("Sort 컨트롤러 초기화 성공 - 블루프린트에 등록 중")
+    init_controller(sort_controller)  # Blueprint 객체가 아닌 함수 직접 호출
+else:
+    logger.error("Sort 컨트롤러 초기화 실패 - API가 올바르게 작동하지 않을 수 있습니다")
 
 # 기능별로 분리된 API 모듈을 등록
 app.register_blueprint(sort_bp, url_prefix='/api/sort')

@@ -194,27 +194,33 @@ class EnvironmentPage(BasePage):
                 widgets["current_temp"].setText(f"현재 온도: {warehouse['current_temp']:.1f}°C")
                 widgets["target_temp"].setText(f"설정 온도: {warehouse['target_temp']:.1f}°C")
                 
-                # 모드 표시 업데이트
-                if warehouse["mode"] == "냉방 모드":
-                    widgets["mode_indicator"].setText("냉방 모드")
-                    widgets["mode_indicator"].setStyleSheet("background-color: #2196F3; color: white; padding: 3px; border-radius: 3px;")
-                elif warehouse["mode"] == "난방 모드":
-                    widgets["mode_indicator"].setText("난방 모드")
-                    widgets["mode_indicator"].setStyleSheet("background-color: #FF5722; color: white; padding: 3px; border-radius: 3px;")
-                else:  # 정지 모드
-                    widgets["mode_indicator"].setText("정지")
-                    widgets["mode_indicator"].setStyleSheet("background-color: #9E9E9E; color: white; padding: 3px; border-radius: 3px;")
-                
                 # 상태 표시기 업데이트
                 if warehouse["status"] == "정상":
                     widgets["status_indicator"].setText("정상")
                     widgets["status_indicator"].setStyleSheet("background-color: #4CAF50; color: white; border-radius: 5px; padding: 2px;")
-                elif warehouse["status"] == "주의":
-                    widgets["status_indicator"].setText("주의")
-                    widgets["status_indicator"].setStyleSheet("background-color: #FFEB3B; color: black; border-radius: 5px; padding: 2px;")
-                else:  # 비정상 또는 연결 안됨
-                    widgets["status_indicator"].setText(warehouse["status"])
-                    widgets["status_indicator"].setStyleSheet("background-color: #F44336; color: white; border-radius: 5px; padding: 2px;")
+                    # 정상 상태일 때 mode_indicator 숨기기
+                    widgets["mode_indicator"].hide()
+                else:  # 주의, 비정상 또는 연결 안됨 상태
+                    if warehouse["status"] == "주의":
+                        widgets["status_indicator"].setText("주의")
+                        widgets["status_indicator"].setStyleSheet("background-color: #FFEB3B; color: black; border-radius: 5px; padding: 2px;")
+                    else:  # 비정상 또는 연결 안됨
+                        widgets["status_indicator"].setText(warehouse["status"])
+                        widgets["status_indicator"].setStyleSheet("background-color: #F44336; color: white; border-radius: 5px; padding: 2px;")
+                    
+                    # 비정상 상태일 때 mode_indicator 표시
+                    widgets["mode_indicator"].show()
+                    
+                    # 모드 표시 업데이트
+                    if warehouse["mode"] == "냉방 모드":
+                        widgets["mode_indicator"].setText("냉방 모드")
+                        widgets["mode_indicator"].setStyleSheet("background-color: #2196F3; color: white; padding: 3px; border-radius: 3px;")
+                    elif warehouse["mode"] == "난방 모드":
+                        widgets["mode_indicator"].setText("난방 모드")
+                        widgets["mode_indicator"].setStyleSheet("background-color: #FF5722; color: white; padding: 3px; border-radius: 3px;")
+                    else:  # 정지 모드
+                        widgets["mode_indicator"].setText("정지")
+                        widgets["mode_indicator"].setStyleSheet("background-color: #9E9E9E; color: white; padding: 3px; border-radius: 3px;")
         except Exception as e:
             logger.error(f"UI 업데이트 오류: {str(e)}")
             self.show_status_message(f"UI 업데이트 오류: {str(e)}", is_error=True)
@@ -287,9 +293,9 @@ class EnvironmentPage(BasePage):
         """서버로부터 환경 이벤트 처리"""
         try:
             # temperature_update 액션 처리 - JSON 구조에 맞게 수정
-            if action == "temperature_update" and "warehouse_id" in payload and "current_temp" in payload:
+            if action == "temperature_update" and "warehouse_id" in payload and "temperature" in payload:
                 wh_id = payload.get("warehouse_id")
-                temperature = payload.get("current_temp")  # current_temp 필드 사용
+                temperature = payload.get("temperature")  # temperature 필드 사용
                 
                 if wh_id in self.warehouses:
                     self.warehouses[wh_id]["current_temp"] = temperature

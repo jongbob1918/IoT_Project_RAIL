@@ -168,7 +168,7 @@ class DataManager(QObject):
         return self._server_connected and self._server_connection and self._server_connection.is_connected
     
     def _poll_server_data(self):
-        """주기적으로 서버 데이터 폴링 (일관된 5초 간격)"""
+        """주기적으로 서버 데이터 폴링"""
         logger.info("데이터 폴링 스레드 시작")
         
         while self._running:
@@ -178,7 +178,7 @@ class DataManager(QObject):
                     self._fetch_all_data()
                 
                 # 폴링 간격 - 항상 5초로 통일
-                time.sleep(5)
+                time.sleep(10)
                 
             except Exception as e:
                 logger.error(f"데이터 폴링 중 오류: {str(e)}")
@@ -191,7 +191,7 @@ class DataManager(QObject):
                 }
                 
                 # 오류 발생 시에도 동일한 폴링 간격 유지
-                time.sleep(5)
+                time.sleep(10)
     
     def _add_notification_thread_safe(self, message):
         """스레드 안전한 알림 추가 메서드"""
@@ -294,23 +294,30 @@ class DataManager(QObject):
             if response and "success" in response and response["success"]:
                 data = response.get("data", {})
                 
-                # 창고별 사용량 업데이트
-                for warehouse_id, warehouse_data in data.get("warehouses", {}).items():
-                    if warehouse_id in self._warehouse_data:
-                        self._warehouse_data[warehouse_id]["used"] = warehouse_data.get("used", 0)
-                        self._warehouse_data[warehouse_id]["capacity"] = warehouse_data.get("capacity", 100)
-                        
-                        # 사용률 계산
-                        if self._warehouse_data[warehouse_id]["capacity"] > 0:
-                            usage_percent = int((self._warehouse_data[warehouse_id]["used"] / 
-                                             self._warehouse_data[warehouse_id]["capacity"]) * 100)
-                            self._warehouse_data[warehouse_id]["usage_percent"] = min(100, usage_percent)
-                
-                # 오늘 입고량 업데이트
-                today_input = data.get("today_input", {})
-                if today_input:
-                    self._today_input = today_input
-                
+                # 데이터 타입 검사 후 적절히 처리
+                if isinstance(data, dict):
+                    # 창고별 사용량 업데이트 (딕셔너리 형식인 경우)
+                    for warehouse_id, warehouse_data in data.get("warehouses", {}).items():
+                        if warehouse_id in self._warehouse_data:
+                            self._warehouse_data[warehouse_id]["used"] = warehouse_data.get("used", 0)
+                            self._warehouse_data[warehouse_id]["capacity"] = warehouse_data.get("capacity", 100)
+                            
+                            # 사용률 계산
+                            if self._warehouse_data[warehouse_id]["capacity"] > 0:
+                                usage_percent = int((self._warehouse_data[warehouse_id]["used"] / 
+                                                self._warehouse_data[warehouse_id]["capacity"]) * 100)
+                                self._warehouse_data[warehouse_id]["usage_percent"] = min(100, usage_percent)
+                    
+                    # 오늘 입고량 업데이트
+                    today_input = data.get("today_input", {})
+                    if today_input:
+                        self._today_input = today_input
+                elif isinstance(data, list):
+                    # 리스트 형식인 경우 (서버 응답 형식이 변경되었거나 다른 API의 응답인 경우)
+                    logger.warning("서버로부터 리스트 형태의 재고 데이터를 받았습니다. 데이터 구조 확인이 필요합니다.")
+                    # 여기에 리스트 형태 데이터 처리 로직 추가
+                    # 예: 리스트의 각 항목에서 warehouse_id를 키로 사용하여 데이터 추출
+                    
                 # 변경 신호 발생
                 self.warehouse_data_changed.emit()
                 self.inventory_data_changed.emit()

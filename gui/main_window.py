@@ -74,8 +74,10 @@ class WindowClass(QMainWindow):
     def setup_server_connection(self):
         """서버 연결 객체 초기화"""
         # config.py 파일의 설정과 일치하도록 서버 호스트 및 포트 설정
-        server_host = "192.168.2.2"  # config에서는 127.0.0.1으로 설정
+        #server_host = "192.168.2.2"  # config에서는 127.0.0.1으로 설정
+        server_host = "192.168.0.7"
         server_port = 8000         # config의 SERVER_PORT와 일치
+        
         
         # 서버 연결 객체 생성
         self.server_conn = ServerConnection(server_host, server_port)
@@ -208,44 +210,54 @@ class WindowClass(QMainWindow):
         # API 구조와 일치하도록 업데이트
         if category == "sorter" and hasattr(self.page_devices, "handleSorterEvent"):
             self.page_devices.handleSorterEvent(action, payload)
-            
             # 대시보드에도 일부 이벤트 전달
             if action == "status_update" and "is_running" in payload:
                 self.data_manager._conveyor_status = 1 if payload["is_running"] else 0
                 self.data_manager.conveyor_status_changed.emit()
-                
         elif category == "environment" and hasattr(self.page_environment, "handleEnvironmentEvent"):
             self.page_environment.handleEnvironmentEvent(action, payload)
-            
             # 환경 데이터 대시보드에도 전달
             if action == "temperature_update" and payload.get("warehouse_id") in self.data_manager._warehouse_data:
                 warehouse_id = payload.get("warehouse_id")
-                temperature = payload.get("current_temp")  # current_temp 필드명으로 수정
+                temperature = payload.get("temperature")  # temperature 필드명으로 수정
                 if temperature is not None:
                     self.data_manager._warehouse_data[warehouse_id]["temperature"] = temperature
-                    
-                    # 상태 업데이트
-                    min_temp = self.data_manager.temp_thresholds[warehouse_id]["min"]
-                    max_temp = self.data_manager.temp_thresholds[warehouse_id]["max"]
-                    if min_temp <= temperature <= max_temp:
-                        self.data_manager._warehouse_data[warehouse_id]["status"] = "정상"
-                    else:
-                        self.data_manager._warehouse_data[warehouse_id]["status"] = "주의"
-                        
-                    self.data_manager.warehouse_data_changed.emit()
-                    
-        elif category == "inventory" and hasattr(self.page_inventory, "handleInventoryEvent"):
-            # 인벤토리 이벤트 처리 (필요시 구현)
-            pass
-            
-        elif category == "expiry" and hasattr(self.page_expiration, "handleExpiryEvent"):
-            # 유통기한 이벤트 처리 (필요시 구현)
-            pass
-            
-        elif category == "access" and hasattr(self.page_access, "handleAccessEvent"):
-            # access 카테고리의 이벤트 처리
-            if hasattr(self.page_access, "handleAccessEvent"):
-                self.page_access.handleAccessEvent(action, payload)
+
+    def on_server_event(self, category, action, payload):
+            """서버 이벤트 수신 시 각 페이지에 전달"""
+            # API 구조와 일치하도록 업데이트
+            if category == "sorter" and hasattr(self.page_devices, "handleSorterEvent"):
+                self.page_devices.handleSorterEvent(action, payload)
+                # 대시보드에도 일부 이벤트 전달
+                if action == "status_update" and "is_running" in payload:
+                    self.data_manager._conveyor_status = 1 if payload["is_running"] else 0
+                    self.data_manager.conveyor_status_changed.emit()
+            elif category == "environment" and hasattr(self.page_environment, "handleEnvironmentEvent"):
+                self.page_environment.handleEnvironmentEvent(action, payload)
+                # 환경 데이터 대시보드에도 전달
+                if action == "temperature_update" and payload.get("warehouse_id") in self.data_manager._warehouse_data:
+                    warehouse_id = payload.get("warehouse_id")
+                    temperature = payload.get("temperature")  # temperature 필드명으로 수정
+                    if temperature is not None:
+                        self.data_manager._warehouse_data[warehouse_id]["temperature"] = temperature
+                        # 상태 업데이트
+                        min_temp = self.data_manager.temp_thresholds[warehouse_id]["min"]
+                        max_temp = self.data_manager.temp_thresholds[warehouse_id]["max"]
+                        if min_temp <= temperature <= max_temp:
+                            self.data_manager._warehouse_data[warehouse_id]["status"] = "정상"
+                        else:
+                            self.data_manager._warehouse_data[warehouse_id]["status"] = "주의"
+                        self.data_manager.warehouse_data_changed.emit()
+            elif category == "inventory" and hasattr(self.page_inventory, "handleInventoryEvent"):
+                # 인벤토리 이벤트 처리 (필요시 구현)
+                pass
+            elif category == "expiry" and hasattr(self.page_expiration, "handleExpiryEvent"):
+                # 유통기한 이벤트 처리 (필요시 구현)
+                pass
+            elif category == "access" and hasattr(self.page_access, "handleAccessEvent"):
+                # access 카테고리의 이벤트 처리
+                if hasattr(self.page_access, "handleAccessEvent"):
+                    self.page_access.handleAccessEvent(action, payload)
     
     def on_connection_status_changed(self, connected, message):
         """서버 연결 상태 변경 이벤트 핸들러"""

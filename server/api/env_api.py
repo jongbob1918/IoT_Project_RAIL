@@ -2,7 +2,6 @@
 from flask import Blueprint, request, jsonify
 from api import get_controller
 import logging
-from utils.middleware import validate_request
 
 # Blueprint 초기화 - 고유한 이름 부여
 bp = Blueprint('env_api', __name__)
@@ -89,18 +88,27 @@ def set_environment_control():
 
 # 온도 설정 API
 @bp.route('/temperature', methods=['POST'])
-@validate_request({
-    "required": ["warehouse", "temperature"],
-    "types": {
-        "warehouse": str,
-        "temperature": int
-    }
-})
 def set_temperature():
     """특정 창고의 목표 온도를 설정합니다."""
     data = request.json
+    
+    # 필수 파라미터 확인
+    if not data:
+        return jsonify({"status": "error", "message": "요청 본문이 필요합니다."}), 400
+    
+    if "warehouse" not in data or "temperature" not in data:
+        return jsonify({"status": "error", "message": "필수 파라미터 누락: warehouse, temperature"}), 400
+    
     warehouse = data.get('warehouse')
-    temperature = data.get('temperature')
+    
+    # 타입 검증
+    if not isinstance(warehouse, str):
+        return jsonify({"status": "error", "message": "창고 ID는 문자열이어야 합니다."}), 400
+    
+    try:
+        temperature = int(data.get('temperature'))
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "온도는 정수여야 합니다."}), 400
     
     # 입력값 검증
     if warehouse not in ['A', 'B', 'C']:
