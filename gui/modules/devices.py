@@ -474,10 +474,8 @@ class DevicesPage(BasePage):
     
     # === BasePage 메서드 오버라이드 ===
     def on_server_connected(self):
-        """서버 연결 성공 시 처리 - 기본 클래스 메서드 오버라이드"""
-        current_time = QDateTime.currentDateTime().toString("hh:mm:ss")
-        log_message = f"{current_time} - 서버에 연결되었습니다."
-        self.add_log_message(log_message)
+
+        logger.info("서버 연결 성공")
         
         # 버튼 활성화
         self.btn_start.setEnabled(True)
@@ -488,15 +486,11 @@ class DevicesPage(BasePage):
         self.show_status_message("서버 연결됨", is_success=True)
         
         # 데이터 갱신을 위한 UI 업데이트 호출
-        self.update_ui()
-        
-        logger.info("서버 연결 성공")
+        self.update_ui()    
     
     def on_server_disconnected(self):
-        """서버 연결 실패 시 처리 - 기본 클래스 메서드 오버라이드"""
-        current_time = QDateTime.currentDateTime().toString("hh:mm:ss")
-        log_message = f"{current_time} - 서버 연결이 끊어졌습니다."
-        self.add_log_message(log_message)
+        """서버 연결 실패 시 처리"""
+        logger.warning("서버 연결 실패")
         
         # 연결이 끊어지면 컨베이어는 정지 상태로 표시
         self.conveyor_status.setText("연결 안됨")
@@ -507,14 +501,12 @@ class DevicesPage(BasePage):
         self.btn_start.setEnabled(False)
         self.btn_pause.setEnabled(False)
         self.btn_stop.setEnabled(False)
-        
+
         # UI 초기화
         self.reset_ui_for_disconnection()
         
         # 상태 표시 업데이트
         self.show_status_message("서버 연결 끊김", is_error=True)
-        
-        logger.warning("서버 연결 실패")
     
     def handle_data_fetch_error(self, context, error_message):
         """데이터 가져오기 오류 처리 - 개선된 오류 처리"""

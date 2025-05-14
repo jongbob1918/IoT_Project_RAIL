@@ -63,7 +63,7 @@ class DataManager(QObject):
         self._warehouse_data = {
             "A": {
                 "type": "freezer",
-                "capacity": 16, 
+                "capacity": 100, 
                 "used": 0, 
                 "temperature": 0.0, 
                 "status": "알 수 없음", 
@@ -71,7 +71,7 @@ class DataManager(QObject):
             },
             "B": {
                 "type": "refrigerator",
-                "capacity": 16, 
+                "capacity": 100, 
                 "used": 0, 
                 "temperature": 0.0, 
                 "status": "알 수 없음", 
@@ -79,7 +79,7 @@ class DataManager(QObject):
             },
             "C": {
                 "type": "room_temp",
-                "capacity": 16, 
+                "capacity": 100, 
                 "used": 0, 
                 "temperature": 0.0, 
                 "status": "알 수 없음", 
@@ -305,7 +305,7 @@ class DataManager(QObject):
                         self._warehouse_data[warehouse_id]["target_temp"] = data.get("target_temp", 0.0)
                         self._warehouse_data[warehouse_id]["status"] = data.get("status", "알 수 없음")
                         self._warehouse_data[warehouse_id]["used"] = data.get("used", 0)
-                        self._warehouse_data[warehouse_id]["capacity"] = data.get("capacity", 16)
+                        self._warehouse_data[warehouse_id]["capacity"] = data.get("capacity", 100)
                         
                         # usage_percent 계산 - 서버에서 제공하지 않는 경우
                         if "usage_percent" in data:

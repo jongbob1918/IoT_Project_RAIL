@@ -185,6 +185,12 @@ class AccessPage(BasePage):  # BasePage 상속으로 변경
                 # 서버에서 출입 로그 데이터 가져오기
                 response = server_conn.get_access_logs()
                 
+                # 타입 체크 - 방어적 프로그래밍
+                if not isinstance(response, dict):
+                    logger.warning(f"예상치 못한 응답 타입: {type(response).__name__}")
+                    self.handle_api_error("출입 로그 조회 실패", f"서버가 예상치 못한 형식으로 응답했습니다: {response}")
+                    return
+                
                 if response and response.get("success", False):
                     # 데이터 변환 및 저장
                     self.access_logs = response.get("logs", [])
