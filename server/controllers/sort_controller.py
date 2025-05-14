@@ -43,7 +43,7 @@ class SortController:
         
         logger.info("분류기 컨트롤러 초기화 완료")
 
-
+    def _register_handlers(self):
         """TCP 핸들러에 이벤트 핸들러 등록"""
         # 원본 프로토콜 형식으로 등록 (E, C, R, X)
         self.tcp_handler.register_device_handler('S', 'E', self.handle_event)

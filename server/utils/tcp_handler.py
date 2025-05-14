@@ -1,397 +1,431 @@
+import socket
+import threading
 import logging
-from typing import Dict, Any
-from datetime import datetime
 import time
-from config import CONFIG
+from typing import Dict, Callable, Any, Optional, List
 
 logger = logging.getLogger(__name__)
 
-class EnvController:
-    """환경 컨트롤러 - 통합 통신 프로토콜 적용"""
+# ==== TCP 소켓 통신을 관리하는 핸들러 클래스 ====
+class TCPHandler:
+    # TCP 핸들러 장치 ID 매핑 (필요한 경우)
+    DEVICE_ID_MAPPING = {
+        'S': 'sort_controller',  # 분류기 - 첫 문자가 S인 메시지
+        'H': 'env_controller',   # 환경 제어 - 첫 문자가 H인 메시지
+        'G': 'access_controller' # 출입 제어 - 첫 문자가 G인 메시지
+    }
     
-    # 상태 상수
-    NORMAL = "normal"
-    WARNING = "warning"
-    
-    # 팬 모드 상수
-    FAN_OFF = "off"
-    FAN_COOLING = "cool"
-    FAN_HEATING = "heat"
-    
-    def __init__(self, tcp_handler, socketio=None, db_helper=None):
-        """컨트롤러 초기화"""
-        self.tcp_handler = tcp_handler
-        self.socketio = socketio
-        self.db_helper = db_helper
+    # ==== TCP 핸들러 초기화 ====
+    def __init__(self, host: str = '0.0.0.0', port: int = 9000):
+        self.host = host
+        self.port = port
+        self.server_socket = None
+        self.clients = {}  # 클라이언트 소켓 저장 (클라이언트 ID: 정보)
+        self.client_lock = threading.Lock()
+        self.running = False
         
-        # 창고 설정 초기화
-        self.warehouses = list(CONFIG["WAREHOUSES"].keys())
+        # 메시지 버퍼 (클라이언트 ID를 키로 사용)
+        self.message_buffers = {}
         
-        # 창고별 상태 데이터
-        self.warehouse_data = {}
-        for wh in self.warehouses:
-            temp_min = CONFIG["WAREHOUSES"][wh]["temp_min"]
-            temp_max = CONFIG["WAREHOUSES"][wh]["temp_max"]
-            
-            self.warehouse_data[wh] = {
-                "temp": None,
-                "target_temp": (temp_min + temp_max) / 2,
-                "temp_range": (temp_min, temp_max),
-                "state": self.NORMAL,
-                "fan_mode": self.FAN_OFF,
-                "fan_speed": 0,
-                "warning": False
-            }
+        # 디바이스별 메시지 타입 핸들러 (디바이스 ID: {메시지 타입: 핸들러 함수})
+        self.device_handlers = {}
         
-        # 이벤트 핸들러 등록 - 새로운 방식과 이전 방식 모두 지원
-        # 원본 프로토콜 형식으로 등록 (E, C, R, X)
-        tcp_handler.register_device_handler('H', 'E', self.process_event)
-        tcp_handler.register_device_handler('H', 'C', self.process_command)
-        tcp_handler.register_device_handler('H', 'R', self.process_response)
-        tcp_handler.register_device_handler('H', 'X', self.process_error)
+        # 헬스체크 주기 (초)
+        self.health_check_interval = 60
+        self.health_check_thread = None
         
-        # 매핑된 디바이스 ID로도 등록 (이중 등록)
-        tcp_handler.register_device_handler('env_controller', 'E', self.process_event)
-        tcp_handler.register_device_handler('env_controller', 'C', self.process_command)
-        tcp_handler.register_device_handler('env_controller', 'R', self.process_response)
-        tcp_handler.register_device_handler('env_controller', 'X', self.process_error)
+        logger.info("TCP 핸들러 초기화 완료")
+
         
-        # 이전 방식 호환성 유지 (deprecated)
-        tcp_handler.register_device_handler('env_controller', 'evt', self.process_event)
-        tcp_handler.register_device_handler('env_controller', 'res', self.process_response)
-        tcp_handler.register_device_handler('env_controller', 'err', self.process_error)
-        
-        logger.info("환경 컨트롤러 초기화 완료")
-    
-    def process_event(self, message_data):
-        """이벤트 메시지 처리 - 'E' 타입 메시지"""
-        if 'content' not in message_data:
-            return
-            
-        content = message_data['content']
-        logger.debug(f"환경 제어 이벤트 수신: {content}")
-        
-        # 원본 콘텐츠 저장
-        original_content = content
-        
-        # 표준화된 파싱 - 프리픽스 제거 처리
-        # HE 프리픽스 제거 (있는 경우)
-        if content.startswith('HE'):
-            content = content[2:]
-        
-        # 이벤트 타입별 처리
-        if content.startswith('tp'):
-            # 온도 데이터 - 'tp-18.5;4.2;21.3'
-            temp_data = content[2:]
-            self._process_temperature_data(temp_data)
-            return True
-            
-        elif content.startswith('w') and len(content) >= 2:
-            # 경고 상태 - 'wA1', 'wB0'
-            warehouse = content[1:2]
-            status = content[2:3] == '1' if len(content) >= 3 else False
-            
-            if warehouse in ['A', 'B', 'C']:
-                self._set_warning_status(warehouse, status)
-                return True
-                
-        elif content[0:1] in ['A', 'B', 'C'] and len(content) >= 2:
-            # 팬 상태 - 'AC2', 'B0', 'CH1'
-            warehouse = content[0:1]
-            fan_status = content[1:]
-            self._set_fan_status(warehouse, fan_status)
+    # ==== 서버 시작 ====
+    def start(self):
+        if self.running:
+            logger.warning("TCP 서버가 이미 실행 중입니다.")
             return True
         
-        # 이 외의 경우 로그로 기록
-        logger.debug(f"처리되지 않은 이벤트: {original_content}")
-        return False
-    
-    def process_command(self, message_data):
-        """명령 메시지 처리 - 'C' 타입 메시지"""
-        if 'content' not in message_data:
-            return
-            
-        content = message_data['content']
-        logger.debug(f"환경 제어 명령 수신: {content}")
-        
-        # 원본 콘텐츠 저장
-        original_content = content
-        
-        # HC 프리픽스 제거 (있는 경우)
-        if content.startswith('HC'):
-            content = content[2:]
-        
-        # 명령 타입별 처리
-        if content.startswith('f') and len(content) >= 3:
-            # 팬 제어 - 'fA1', 'fB2', 'fC0'
-            warehouse = content[1:2]
-            status = content[2:]
-            
-            if warehouse in ['A', 'B', 'C']:
-                self._set_fan_status(warehouse, status)
-                logger.info(f"팬 제어 명령 수행: 창고 {warehouse}, 상태 {status}")
-                return True
-        
-        elif content.startswith('p') and len(content) >= 2:
-            # 온도 설정 - 'pA-20', 'pB5', 'pC22'
-            warehouse = content[1:2]
-            temp_str = content[2:]
-            
-            try:
-                temperature = float(temp_str)
-                
-                if warehouse in ['A', 'B', 'C']:
-                    result = self.set_target_temperature(warehouse, temperature)
-                    if result["status"] == "ok":
-                        logger.info(f"온도 설정 성공: 창고 {warehouse}, 온도 {temperature}°C")
-                    else:
-                        logger.warning(f"온도 설정 실패: {result['message']}")
-                    return True
-            except ValueError:
-                logger.warning(f"잘못된 온도 값: {temp_str}")
-                return False
-        
-        # 모든 팬 정지 명령
-        elif content.startswith('0') and len(content) >= 2:
-            # 모든 팬 정지 - '00'
-            for wh in self.warehouses:
-                self._set_fan_status(wh, "00")
-            logger.info("모든 팬 정지 명령 수행")
-            return True
-        
-        # 이 외의 경우 로그로 기록
-        logger.debug(f"처리되지 않은 명령: {original_content}")
-        return False
-    
-    def process_response(self, message_data):
-        """응답 메시지 처리 - 'R' 타입 메시지"""
-        if 'content' in message_data:
-            content = message_data['content']
-            logger.info(f"환경 제어 응답: {content}")
-            return True
-        return False
-    
-    def process_error(self, message_data):
-        """오류 메시지 처리 - 'X' 타입 메시지"""
-        if 'content' in message_data:
-            content = message_data['content']
-            error_code = content
-            
-            if content.startswith('e'):
-                error_code = content  # 'e1', 'e2' 등
-            
-            logger.error(f"환경 제어 오류: {error_code}")
-            
-            # 소켓 이벤트 발송
-            self._emit_event("env_error", {
-                "error_code": error_code,
-                "message": f"환경 제어 오류: {error_code}"
-            })
-            return True
-        return False
-    
-    def _process_temperature_data(self, temp_data):
-        """온도 데이터 처리"""
-        if not temp_data:
-            return
-            
         try:
-            # 세미콜론으로 구분된 온도 값 파싱
-            temps = temp_data.split(';')
-            warehouses = ['A', 'B', 'C']
+            # 소켓 생성
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind((self.host, self.port))
+            self.server_socket.listen(5)
+            self.running = True
             
-            for i, temp_str in enumerate(temps):
-                if i >= len(warehouses):
-                    break
-                    
+            logger.info(f"TCP 서버가 {self.host}:{self.port}에서 시작되었습니다.")
+            
+            # 클라이언트 연결 수신 스레드 시작
+            threading.Thread(target=self._accept_connections, daemon=True).start()
+            
+            # 헬스체크 스레드 시작
+            self.health_check_thread = threading.Thread(target=self._health_check_loop, daemon=True)
+            self.health_check_thread.start()
+            
+            return True
+        
+        except Exception as e:
+            logger.error(f"TCP 서버 시작 실패: {str(e)}")
+            self.running = False
+            return False
+    
+    # ==== 서버 종료 ====
+    def stop(self):
+        self.running = False
+        
+        # 모든 클라이언트 연결 종료
+        with self.client_lock:
+            for client_id, client_info in list(self.clients.items()):
                 try:
-                    temp = float(temp_str.strip())
-                    warehouse = warehouses[i]
-                    
-                    # 이전 값과 다를 때만 업데이트
-                    if self.warehouse_data[warehouse]["temp"] != temp:
-                        logger.debug(f"온도 업데이트: 창고 {warehouse}, {temp}°C")
-                        self.warehouse_data[warehouse]["temp"] = temp
-                        
-                        # 경고 상태일 때 DB 로깅
-                        if self.db_helper and self.warehouse_data[warehouse]["warning"]:
-                            self.db_helper.insert_temperature_log(warehouse, temp)
-                        
-                        # 소켓 이벤트 발송
-                        self._emit_event("temperature_update", {
-                            "warehouse_id": warehouse,
-                            "temperature": temp
-                        })
-                        
-                except (ValueError, IndexError):
-                    logger.warning(f"온도 변환 오류: '{temp_str}'")
-        except Exception as e:
-            logger.error(f"온도 데이터 처리 오류: {str(e)}")
-    
-    def _set_warning_status(self, warehouse, warning_status):
-        """경고 상태 설정"""
-        logger.debug(f"경고 상태 설정: 창고 {warehouse}, 상태 {warning_status}")
+                    client_info['socket'].close()
+                except Exception as e:
+                    logger.error(f"클라이언트 {client_id} 연결 종료 실패: {str(e)}")
+            
+            self.clients.clear()
+            self.message_buffers.clear()
         
-        if warehouse not in self.warehouse_data:
-            logger.warning(f"알 수 없는 창고 ID: {warehouse}")
-            return
-            
-        # 상태 업데이트
-        self.warehouse_data[warehouse]["warning"] = warning_status
-        self.warehouse_data[warehouse]["state"] = self.WARNING if warning_status else self.NORMAL
-        
-        # 경고 시 DB 기록
-        if warning_status and self.db_helper:
-            current_temp = self.warehouse_data[warehouse]["temp"]
-            if current_temp is not None:
-                self.db_helper.insert_temperature_log(warehouse, current_temp)
-                logger.info(f"창고 {warehouse} 경고 상태 온도 로깅: {current_temp}°C")
-        
-        # 이벤트 발송
-        self._emit_event("warehouse_warning", {
-            "warehouse": warehouse,
-            "warning": warning_status
-        })
-        logger.info(f"창고 {warehouse} 경고 상태 변경: {warning_status}")
-    
-    def _set_fan_status(self, warehouse, status_str):
-        """팬 상태 설정"""
-        if warehouse not in self.warehouse_data or not status_str:
-            return
-            
-        try:
-            # 모드 설정 (첫 번째 문자)
-            mode_char = status_str[0]
-            
-            # 창고 A, B는 난방 모드를 지원하지 않음
-            if warehouse in ['A', 'B'] and mode_char == 'H':
-                mode_char = '0'  # 정지로 변경
-            
-            # 모드 결정
-            if mode_char == 'C':
-                fan_mode = self.FAN_COOLING
-            elif mode_char == 'H' and warehouse == 'C':  # C 창고만 난방 지원
-                fan_mode = self.FAN_HEATING
-            else:  # '0', 'O' 또는 다른 문자
-                fan_mode = self.FAN_OFF
-            
-            # 속도 설정 (두 번째 문자)
+        # 서버 소켓 종료
+        if self.server_socket:
             try:
-                speed = int(status_str[1]) if len(status_str) > 1 else 0
-                # 유효한 범위로 제한 (0-3)
-                speed = max(0, min(speed, 3))
+                self.server_socket.close()
+            except Exception as e:
+                logger.error(f"서버 소켓 종료 실패: {str(e)}")
+        
+        logger.info("TCP 서버가 종료되었습니다.")
+    
+    # ==== 클라이언트 연결 수락 ====
+    def _accept_connections(self):
+        logger.info("클라이언트 연결 대기 중...")
+        
+        while self.running:
+            try:
+                # 클라이언트 연결 수락
+                client_socket, address = self.server_socket.accept()
+                client_id = f"{address[0]}:{address[1]}"
                 
-                # 정지 모드면 속도는 0
-                if fan_mode == self.FAN_OFF:
-                    speed = 0
-            except (ValueError, IndexError):
-                speed = 0
+                logger.info(f"새 클라이언트 연결: {client_id}")
+                
+                # 클라이언트 정보 저장
+                with self.client_lock:
+                    self.clients[client_id] = {
+                        'socket': client_socket,
+                        'address': address,
+                        'device_id': None,
+                        'last_activity': time.time()
+                    }
+                    # 메시지 버퍼 초기화
+                    self.message_buffers[client_id] = b""
+                
+                # 클라이언트 수신 스레드 시작
+                threading.Thread(target=self._handle_client, args=(client_id,), daemon=True).start()
             
-            # 상태 업데이트
-            self.warehouse_data[warehouse]["fan_mode"] = fan_mode
-            self.warehouse_data[warehouse]["fan_speed"] = speed
-            
-            # 로그
-            mode_str = "냉방" if fan_mode == self.FAN_COOLING else \
-                       "난방" if fan_mode == self.FAN_HEATING else "정지"
-            speed_str = "정지" if speed == 0 else f"속도 {speed}"
-            logger.info(f"창고 {warehouse} 팬 상태 변경: {mode_str}, {speed_str}")
-            
-            # 이벤트 발송
-            self._emit_event("fan_status_update", {
-                "warehouse": warehouse,
-                "mode": fan_mode,
-                "speed": speed
-            })
-            
-        except Exception as e:
-            logger.error(f"팬 상태 처리 오류: {str(e)}")
+            except socket.timeout:
+                # 타임아웃은 정상 - 주기적으로 실행 상태 확인을 위함
+                pass
+            except Exception as e:
+                if self.running:  # 정상 종료가 아닌 경우만 로그
+                    logger.error(f"클라이언트 연결 수락 실패: {str(e)}")
+                    time.sleep(1)  # 연속 오류 방지
     
-    def set_target_temperature(self, warehouse, temperature):
-        """목표 온도 설정"""
-        if warehouse not in self.warehouse_data:
-            return {
-                "status": "error",
-                "message": f"존재하지 않는 창고: {warehouse}"
-            }
-        
-        # 유효 범위 확인
-        min_temp, max_temp = self.warehouse_data[warehouse]["temp_range"]
-        if temperature < min_temp or temperature > max_temp:
-            return {
-                "status": "error",
-                "message": f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다."
-            }
-        
-        # 명령 전송 (정수로 변환)
-        value = int(temperature)
-        command = f"HCp{warehouse}{value}\n"
-        
-        if not self.tcp_handler.send_message("H", command):
-            return {"status": "error", "message": "환경 제어 통신 오류"}
-        
-        # 내부 상태 업데이트
-        self.warehouse_data[warehouse]["target_temp"] = temperature
-        
-        return {
-            "status": "ok",
-            "message": f"{warehouse} 창고 목표 온도를 {temperature}도로 설정했습니다."
-        }
-    
-    def get_status(self):
-        """모든 창고의 상태 반환"""
-        warehouses = {}
-        
-        for wh in self.warehouses:
-            warehouses[wh] = {
-                "temp": self.warehouse_data[wh]["temp"],
-                "target_temp": self.warehouse_data[wh]["target_temp"],
-                "status": self.warehouse_data[wh]["state"],
-                "fan_mode": self.warehouse_data[wh]["fan_mode"],
-                "fan_speed": self.warehouse_data[wh]["fan_speed"],
-                "warning": self.warehouse_data[wh]["warning"]
-            }
-        
-        return {
-            "status": "ok",
-            "data": {
-                "warehouses": warehouses,
-                "timestamp": datetime.now().isoformat()
-            }
-        }
-    
-    def get_warehouse_status(self, warehouse):
-        """특정 창고의 상태 반환"""
-        if warehouse not in self.warehouse_data:
-            return {"status": "error", "message": f"알 수 없는 창고: {warehouse}"}
-        
-        return {
-            "status": "ok",
-            "data": {
-                "temp": self.warehouse_data[warehouse]["temp"],
-                "target_temp": self.warehouse_data[warehouse]["target_temp"],
-                "status": self.warehouse_data[warehouse]["state"],
-                "fan_mode": self.warehouse_data[warehouse]["fan_mode"],
-                "fan_speed": self.warehouse_data[warehouse]["fan_speed"],
-                "warning": self.warehouse_data[warehouse]["warning"]
-            },
-            "timestamp": datetime.now().isoformat()
-        }
-    
-    def _emit_event(self, event_name, data):
-        """소켓 이벤트 발송"""
-        if not self.socketio:
+    # ==== 클라이언트 처리 ====
+    def _handle_client(self, client_id: str):
+        """클라이언트 데이터 수신 및 처리"""
+        if client_id not in self.clients:
             return
+        
+        client_socket = self.clients[client_id]['socket']
+        client_socket.settimeout(5.0)  # 5초 타임아웃
+        
+        while self.running:
+            try:
+                # 데이터 수신
+                data = client_socket.recv(4096)
+                
+                if not data:
+                    # 연결 종료
+                    logger.info(f"클라이언트 {client_id} 연결 종료")
+                    self._remove_client(client_id)
+                    break
+                
+                # 마지막 활동 시간 업데이트
+                with self.client_lock:
+                    if client_id in self.clients:
+                        self.clients[client_id]['last_activity'] = time.time()
+                
+                # 데이터 처리
+                self._process_data(client_id, data)
             
+            except socket.timeout:
+                # 타임아웃은 정상 - 주기적으로 실행 상태 확인을 위함
+                continue
+            except ConnectionResetError:
+                logger.warning(f"클라이언트 {client_id} 연결 리셋됨")
+                self._remove_client(client_id)
+                break
+            except Exception as e:
+                logger.error(f"클라이언트 {client_id} 처리 중 오류: {str(e)}")
+                self._remove_client(client_id)
+                break
+    
+    # ==== 데이터 처리 ====
+    def _process_data(self, client_id: str, data: bytes):
+        """수신한 데이터를 처리하고 완전한 메시지를 파싱합니다."""
+        # 버퍼에 데이터 추가
+        with self.client_lock:
+            if client_id not in self.message_buffers:
+                self.message_buffers[client_id] = b""
+            
+            self.message_buffers[client_id] += data
+            
+            # 완전한 메시지 처리
+            buffer = self.message_buffers[client_id]
+            messages = []
+            
+            while b'\n' in buffer:
+                # 개행 문자로 메시지 분리
+                message, buffer = buffer.split(b'\n', 1)
+                if message:  # 빈 메시지가 아닌 경우만 처리
+                    messages.append(message)
+            
+            # 버퍼 업데이트
+            self.message_buffers[client_id] = buffer
+        
+        # 메시지 처리
+        for message in messages:
+            try:
+                # 메시지 디코딩
+                decoded_message = message.decode('utf-8')
+                
+                # 첫 번째 문자는 디바이스 식별자(S, H, G), 두 번째 문자는 메시지 타입(E, C, R, X)
+                if len(decoded_message) < 2:
+                    logger.warning(f"잘못된 메시지 형식(길이 부족): {decoded_message}")
+                    continue
+                
+                device_type = decoded_message[0]  # 디바이스 타입(S, H, G)
+                message_type = decoded_message[1]  # 메시지 타입(E=이벤트, C=명령, R=응답, X=오류)
+                message_content = decoded_message[2:]  # 메시지 내용
+                
+                # 디바이스 ID 매핑
+                mapped_device_id = self.DEVICE_ID_MAPPING.get(device_type, device_type)
+                
+                # 클라이언트-디바이스 매핑 업데이트
+                with self.client_lock:
+                    if client_id in self.clients:
+                        if self.clients[client_id]['device_id'] is None:
+                            self.clients[client_id]['device_id'] = device_type
+                            logger.info(f"디바이스 등록: {device_type} (클라이언트: {client_id})")
+                
+                # 메시지 처리 - 중요: 프로토콜에 맞는 원래 타입 그대로 사용
+                self._process_message(mapped_device_id, message_type, device_type, message_content)
+            
+            except Exception as e:
+                logger.error(f"메시지 처리 오류: {str(e)}")
+    
+    # ==== 메시지 처리 ====
+    def _process_message(self, device_id: str, message_type: str, raw_device_id: str, content: str):
+        """메시지를 적절한 핸들러로 전달합니다."""
         try:
-            event_data = {
-                "type": "event",
-                "category": "environment",
-                "action": event_name,
-                "payload": data,
-                "timestamp": int(time.time())
-            }
+            handler_called = False
             
-            self.socketio.emit("event", event_data, namespace="/ws")
+            # 1. 매핑된 디바이스 ID와 메시지 타입으로 핸들러 찾기
+            if device_id in self.device_handlers and message_type in self.device_handlers[device_id]:
+                logger.debug(f"메시지 수신 ({raw_device_id}{message_type}): {content}")
+                
+                # 핸들러 호출
+                self.device_handlers[device_id][message_type]({
+                    'device_type': raw_device_id,
+                    'message_type': message_type,
+                    'content': content
+                })
+                handler_called = True
+            
+            # 2. 원래 디바이스 ID와 메시지 타입으로 핸들러 찾기
+            if not handler_called and raw_device_id in self.device_handlers and message_type in self.device_handlers[raw_device_id]:
+                logger.debug(f"메시지 수신 ({raw_device_id}{message_type}): {content} (원본 ID 사용)")
+                
+                # 핸들러 호출
+                self.device_handlers[raw_device_id][message_type]({
+                    'device_type': raw_device_id,
+                    'message_type': message_type,
+                    'content': content
+                })
+                handler_called = True
+            
+            # 호환성을 위해 이전 매핑 방식도 시도 (deprecated - 최종 버전에서는 제거 예정)
+            if not handler_called:
+                # 이전 매핑 변환
+                legacy_type = None
+                if message_type == 'E':
+                    legacy_type = 'evt'
+                elif message_type == 'R':
+                    legacy_type = 'res'
+                elif message_type == 'X':
+                    legacy_type = 'err'
+                
+                # 이전 매핑으로 다시 시도
+                if legacy_type and device_id in self.device_handlers and legacy_type in self.device_handlers[device_id]:
+                    logger.debug(f"메시지 수신 ({raw_device_id}{message_type}): {content} (레거시 매핑 사용)")
+                    
+                    # 핸들러 호출
+                    self.device_handlers[device_id][legacy_type]({
+                        'device_type': raw_device_id,
+                        'message_type': message_type,
+                        'content': content
+                    })
+                    handler_called = True
+                
+                # 원본 ID로도 시도
+                elif legacy_type and raw_device_id in self.device_handlers and legacy_type in self.device_handlers[raw_device_id]:
+                    logger.debug(f"메시지 수신 ({raw_device_id}{message_type}): {content} (원본 ID + 레거시 매핑)")
+                    
+                    # 핸들러 호출
+                    self.device_handlers[raw_device_id][legacy_type]({
+                        'device_type': raw_device_id,
+                        'message_type': message_type,
+                        'content': content
+                    })
+                    handler_called = True
+            
+            # 핸들러를 찾지 못한 경우
+            if not handler_called:
+                logger.warning(f"핸들러 없음: 디바이스={device_id}, 타입={message_type}, 원본ID={raw_device_id}")
+                
+                # 디버깅 정보 추가
+                if logger.isEnabledFor(logging.DEBUG):
+                    handler_keys = []
+                    for d_id, handlers in self.device_handlers.items():
+                        for m_type in handlers.keys():
+                            handler_keys.append(f"{d_id}:{m_type}")
+                    
+                    if handler_keys:
+                        logger.debug(f"등록된 핸들러: {', '.join(handler_keys)}")
+                    else:
+                        logger.warning("등록된 핸들러 없음")
+        
         except Exception as e:
-            logger.error(f"이벤트 발송 오류: {str(e)}")
+            logger.error(f"메시지 처리 중 오류: {str(e)}")
+
+        
+    # ==== 메시지 전송 ====
+    def send_message(self, device_id: str, command: str) -> bool:
+        """지정된 디바이스에 커맨드 메시지를 전송합니다."""
+        # 디바이스 ID에 해당하는 클라이언트 찾기
+        client_id = self._find_client_by_device(device_id)
+        
+        if not client_id:
+            logger.warning(f"장치 {device_id} 연결 없음: 메시지 전송 실패")
+            return False
+        
+        try:
+            with self.client_lock:
+                if client_id not in self.clients:
+                    return False
+                
+                client_socket = self.clients[client_id]['socket']
+                
+                # 명령어에 개행 문자 추가 (없는 경우에만)
+                if not command.endswith('\n'):
+                    command = command + '\n'
+                
+                # 전송
+                client_socket.sendall(command.encode('utf-8'))
+                
+                # 활동 시간 업데이트
+                self.clients[client_id]['last_activity'] = time.time()
+                
+                logger.debug(f"메시지 전송 ({device_id}): {command.strip()}")
+                return True
+        
+        except Exception as e:
+            logger.error(f"메시지 전송 오류 ({device_id}): {str(e)}")
+            self._remove_client(client_id)
+            return False
+    
+    # ==== 디바이스 핸들러 등록 ====
+    def register_device_handler(self, device_id: str, message_type: str, handler: Callable):
+        """디바이스별 메시지 타입 핸들러를 등록합니다."""
+        if device_id not in self.device_handlers:
+            self.device_handlers[device_id] = {}
+        
+        self.device_handlers[device_id][message_type] = handler
+        logger.debug(f"디바이스 핸들러 등록: {device_id}, {message_type}")
+    
+    # ==== 클라이언트 제거 ====
+    def _remove_client(self, client_id: str):
+        """클라이언트 연결을 종료하고 목록에서 제거합니다."""
+        with self.client_lock:
+            if client_id not in self.clients:
+                return
+            
+            try:
+                device_id = self.clients[client_id].get('device_id')
+                self.clients[client_id]['socket'].close()
+                del self.clients[client_id]
+                
+                # 메시지 버퍼 제거
+                if client_id in self.message_buffers:
+                    del self.message_buffers[client_id]
+                
+                if device_id:
+                    logger.info(f"디바이스 {device_id} 연결 종료됨")
+            
+            except Exception as e:
+                logger.error(f"클라이언트 종료 오류: {str(e)}")
+    
+    # ==== 디바이스 ID로 클라이언트 찾기 ====
+    def _find_client_by_device(self, device_id: str) -> Optional[str]:
+        """디바이스 ID에 해당하는 클라이언트 ID를 찾습니다."""
+        with self.client_lock:
+            for client_id, client_info in self.clients.items():
+                if client_info.get('device_id') == device_id:
+                    return client_id
+        
+        return None
+    
+    # ==== 헬스체크 루프 ====
+    def _health_check_loop(self):
+        """주기적으로 연결 상태를 확인하고 비활성 클라이언트를 정리합니다."""
+        while self.running:
+            try:
+                # 비활성 클라이언트 정리
+                self._cleanup_inactive_clients()
+                
+                # 다음 체크까지 대기
+                time.sleep(self.health_check_interval)
+            
+            except Exception as e:
+                logger.error(f"헬스체크 중 오류: {str(e)}")
+    
+    # ==== 비활성 클라이언트 정리 ====
+    def _cleanup_inactive_clients(self, timeout: int = 600):
+        """지정 시간 동안 활동이 없는 클라이언트를 제거합니다."""
+        current_time = time.time()
+        inactive_clients = []
+        
+        # 비활성 클라이언트 식별
+        with self.client_lock:
+            for client_id, client_info in self.clients.items():
+                last_activity = client_info['last_activity']
+                if current_time - last_activity > timeout:
+                    inactive_clients.append(client_id)
+        
+        # 비활성 클라이언트 제거
+        for client_id in inactive_clients:
+            logger.info(f"비활성 클라이언트 제거: {client_id}")
+            self._remove_client(client_id)
+    
+    # ==== 연결된 디바이스 목록 반환 ====
+    def get_connected_devices(self) -> List[str]:
+        """현재 연결된 디바이스 ID 목록을 반환합니다."""
+        connected_devices = []
+        
+        with self.client_lock:
+            for client_info in self.clients.values():
+                device_id = client_info.get('device_id')
+                if device_id:
+                    connected_devices.append(device_id)
+        
+        return connected_devices
+    
+    # ==== 디바이스 연결 상태 확인 ====
+    def is_device_connected(self, device_id: str) -> bool:
+        """특정 디바이스의 연결 상태를 확인합니다."""
+        return self._find_client_by_device(device_id) is not None

@@ -17,7 +17,7 @@ except ImportError:
     pass     # python-dotenv가 설치되지 않은 경우 무시
 
 # ===== 서버 설정 =====
-SERVER_HOST = os.getenv("SERVER_HOST", "127.0.0.1")
+SERVER_HOST = os.getenv("SERVER_HOST", "192.168.2.2")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
@@ -32,10 +32,10 @@ DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}
 # ===== TCP 하드웨어 통신 설정 =====
 TCP_PORT = int(os.getenv("TCP_PORT", "9000"))
 HARDWARE_IP = {
-    'sort_controller': os.getenv("SORT_CONTROLLER_IP", '192.168.0.101'),
-    'env_controller': os.getenv("ENV_AB_CONTROLLER_IP", '192.168.2.4'),  # 환경 제어(A,B 창고)
-    'access_controller': os.getenv("ACCESS_CONTROLLER_IP", '192.168.0.104')
+    'sort_controller': os.getenv("SORT_CONTROLLER_IP", '192.168.2.3'),
+    'env_controller': os.getenv("ENV_CONTROLLER_IP", '192.168.2.4'), 
 }
+
 
 # ===== 멀티포트모드 TCP 하드웨어 통신 설정 =====
 MULTI_PORT_MODE = os.getenv("MULTI_PORT_MODE", "False").lower() == "true"
