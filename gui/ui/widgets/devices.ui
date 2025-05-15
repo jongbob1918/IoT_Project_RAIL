@@ -222,7 +222,7 @@
      </font>
     </property>
     <property name="text">
-     <string>분류박스 B</string>
+     <string>냉장 분류대</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
@@ -478,7 +478,7 @@ border-radius: 0px;</string>
      </font>
     </property>
     <property name="text">
-     <string>분류박스 C</string>
+     <string>상온 분류대</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
@@ -500,7 +500,7 @@ border-radius: 0px;</string>
      </font>
     </property>
     <property name="text">
-     <string>분류박스 A</string>
+     <string>냉동 분류대</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
@@ -538,7 +538,7 @@ border-radius: 0px;</string>
      </font>
     </property>
     <property name="text">
-     <string>오류</string>
+     <string>미인식</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignCenter</set>
