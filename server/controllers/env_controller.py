@@ -114,14 +114,19 @@ class EnvController:
         if 'content' not in message and 'raw' not in message:
             logger.error("이벤트 메시지에 내용이 없음")
             return
-            
+                
         # raw 또는 content 키에서 메시지 가져오기
         content = message.get('raw', message.get('content', ''))
         
         # 로그 추가
         logger.debug(f"환경 이벤트 수신: {content}")
         
-        # 메시지 파싱
+        # 직접 'tp-'로 시작하는 메시지 처리 (프로토콜 파싱 우회)
+        if content.startswith('tp-'):
+            self._process_temperature_data(content[3:])  # 'tp-' 제거
+            return True
+        
+        # 표준 프로토콜 메시지 파싱
         device_id, msg_type, payload = parse_message(content)
         
         # 유효성 검증
