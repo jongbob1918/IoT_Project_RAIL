@@ -38,6 +38,7 @@ CREATE TABLE `employee` (
 
 LOCK TABLES `employee` WRITE;
 /*!40000 ALTER TABLE `employee` DISABLE KEYS */;
+INSERT INTO `employee` VALUES ('100001','김민수',NULL,'SW Team'),('100002','이서연',NULL,'HW Team'),('100003','박지훈',NULL,'SW Team'),('100004','최유진',NULL,'HW Team'),('100005','정하늘',NULL,'SW Team'),('100006','조예린',NULL,'HW Team'),('100007','한지후',NULL,'SW Team'),('100008','신서현',NULL,'HW Team'),('100009','오세준',NULL,'SW Team'),('100010','배하은',NULL,'HW Team'),('100011','문지호',NULL,'SW Team'),('100012','서지우',NULL,'HW Team'),('100013','이도윤',NULL,'SW Team'),('100014','장예진',NULL,'HW Team'),('100015','홍승우',NULL,'SW Team'),('100016','윤지아',NULL,'HW Team'),('100017','강민재',NULL,'SW Team'),('100018','김하린',NULL,'HW Team'),('100019','노지후',NULL,'SW Team'),('100020','임서아',NULL,'HW Team');
 /*!40000 ALTER TABLE `employee` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -217,4 +218,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-05-13 14:52:43
+-- Dump completed on 2025-05-15 11:33:19
