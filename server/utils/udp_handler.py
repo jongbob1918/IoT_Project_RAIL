@@ -8,17 +8,19 @@ import time
 logger = logging.getLogger(__name__)
 
 class UDPBarcodeHandler:
-    def __init__(self, host='0.0.0.0', port=9000, callback=None):
+    def __init__(self, host='0.0.0.0', port=9000, callback=None, debug_mode=False):
         """UDP 바코드 핸들러 초기화
         
         Args:
             host (str): 바인딩할 호스트 주소
             port (int): 바인딩할 포트 번호
             callback (callable): 바코드 인식 시 호출할 콜백 함수
+            debug_mode (bool): 디버그 모드 활성화 여부 (화면에 이미지 표시)
         """
         self.host = host
         self.port = port
         self.callback = callback
+        self.debug_mode = debug_mode
         self.running = False
         self.udp_socket = None
         self.thread = None
@@ -37,7 +39,7 @@ class UDPBarcodeHandler:
             logger.error(f"QR 코드 감지기 초기화 실패: {str(e)}")
             self.qr_detector = None
         
-        logger.info("UDP 바코드 핸들러 초기화 완료")
+        logger.info(f"UDP 바코드 핸들러 초기화 완료 - {host}:{port}")
     
     def start(self):
         """UDP 바코드 핸들러 시작"""
@@ -136,6 +138,11 @@ class UDPBarcodeHandler:
                 logger.warning("이미지 디코딩 실패")
                 return
             
+            # 디버그 모드일 때만 OpenCV 창 표시
+            if self.debug_mode:
+                cv2.imshow("QR UDP Stream", img)
+                cv2.waitKey(1)
+            
             if self.qr_detector is None:
                 logger.error("QR 코드 감지기가 초기화되지 않았습니다.")
                 return
@@ -145,6 +152,18 @@ class UDPBarcodeHandler:
             
             if qr_data and qr_data != self.last_sent_data:
                 logger.info(f"QR 코드 인식됨: {qr_data}")
+                
+                # 디버그 모드일 때 인식된 QR코드 시각화
+                if self.debug_mode and points is not None and len(points) > 0:
+                    try:
+                        points = points.astype(int).reshape(-1, 2)
+                        cv2.polylines(img, [points], True, (0, 255, 0), 2)
+                        x, y = points[0]
+                        cv2.putText(img, qr_data, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                        cv2.imshow("QR UDP Stream", img)
+                        cv2.waitKey(1)
+                    except Exception as e:
+                        logger.error(f"QR 코드 시각화 실패: {str(e)}")
                 
                 # 콜백 함수 호출하여 바코드 데이터 전달
                 if self.callback:

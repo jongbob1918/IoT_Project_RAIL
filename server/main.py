@@ -3,7 +3,7 @@ from flask_cors import CORS
 from utils.logging import setup_logger
 from flask_socketio import SocketIO
 import datetime  # 타임스탬프 생성용 추가
-from config import CONFIG, SERVER_HOST, SERVER_PORT, TCP_PORT, DEBUG, SOCKETIO_PING_TIMEOUT, SOCKETIO_PING_INTERVAL, SOCKETIO_ASYNC_MODE, MULTI_PORT_MODE, TCP_PORTS, HARDWARE_IP
+from config import CONFIG, SERVER_HOST, SERVER_PORT, TCP_PORT, DEBUG, SOCKETIO_PING_TIMEOUT, SOCKETIO_PING_INTERVAL, SOCKETIO_ASYNC_MODE, MULTI_PORT_MODE, TCP_PORTS, HARDWARE_IP, UDP_HOST, UDP_PORT
 from api.sort_api import sort_bp
 from api.inventory_api import bp as inventory_bp
 from api.env_api import bp as env_bp
@@ -16,12 +16,6 @@ from utils.multi_tcp_handler import MultiTCPHandler
 from api import set_controller, register_controller  # 컨트롤러 관리 함수 임포트
 from api.sort_api import init_controller  # init_controller 함수 직접 임포트
 from utils.udp_handler import UDPBarcodeHandler
-
-try:
-    from utils.tcp_debug_helper import *
-    print("디버깅 모드가 활성화되었습니다.")
-except ImportError as e:
-    pass  # 디버그 헬퍼가 없으면 무시
 
 # logger 초기화 전에 로그 디렉토리 확인
 import os
@@ -211,10 +205,10 @@ if __name__ == '__main__':
     try:
         # UDP 바코드 핸들러 초기화 (콜백 함수로 handle_barcode 등록)
         udp_handler = UDPBarcodeHandler(
-            host=HARDWARE_IP if 'HARDWARE_IP' in globals() else "0.0.0.0",  # CONFIG에서 UDP_HOST 사용 또는 기본값
-            port=CONFIG.get("UDP_PORT", 8888),  # CONFIG에서 UDP_PORT 사용 또는 기본값
+            host=UDP_HOST,
+            port=UDP_PORT,
             callback=handle_barcode,
-            debug_mode=DEBUG  # 디버그 모드일 때만 OpenCV 창 표시
+            debug_mode=DEBUG  # 디버그 모드일 때 이미지 시각화
         )
         
         # UDP 바코드 핸들러 시작
