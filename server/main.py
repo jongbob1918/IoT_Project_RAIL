@@ -15,6 +15,7 @@ from utils.tcp_handler import TCPHandler
 from utils.multi_tcp_handler import MultiTCPHandler
 from api import set_controller, register_controller  # 컨트롤러 관리 함수 임포트
 from api.sort_api import init_controller  # init_controller 함수 직접 임포트
+from utils.udp_handler import UDPBarcodeHandler
 
 try:
     from utils.tcp_debug_helper import *
@@ -186,6 +187,19 @@ def not_found_error(error):
 def internal_error(error):
     app.logger.error('서버 오류: %s', str(error))
     return jsonify({"status": "error", "message": "서버 내부 오류가 발생했습니다"}), 500
+    
+def handle_barcode(barcode_data):
+    """바코드 데이터 수신 콜백 함수"""
+    if sort_controller:
+        # 바코드 데이터가 'bc'로 시작하는지 확인
+        if not barcode_data.startswith("bc"):
+            barcode_data = f"bc{barcode_data}"
+            
+        # 바코드 데이터 처리 - sort_controller에 전달
+        sort_controller._handle_barcode(barcode_data)
+        logger.info(f"바코드 처리됨: {barcode_data}")
+    else:
+        logger.warning("Sort 컨트롤러가 초기화되지 않았습니다. 바코드 처리 불가.")
 
 # 종료 함수 추가
 def shutdown():
@@ -195,6 +209,28 @@ def shutdown():
 
 if __name__ == '__main__':
     try:
+        # UDP 바코드 핸들러 초기화 (콜백 함수로 handle_barcode 등록)
+        udp_handler = UDPBarcodeHandler(
+            host=HARDWARE_IP if 'HARDWARE_IP' in globals() else "0.0.0.0",  # CONFIG에서 UDP_HOST 사용 또는 기본값
+            port=CONFIG.get("UDP_PORT", 8888),  # CONFIG에서 UDP_PORT 사용 또는 기본값
+            callback=handle_barcode,
+            debug_mode=DEBUG  # 디버그 모드일 때만 OpenCV 창 표시
+        )
+        
+        # UDP 바코드 핸들러 시작
+        udp_handler.start()
+        
+        # SocketIO 서버 시작
         socketio.run(app, host=SERVER_HOST, port=SERVER_PORT, debug=DEBUG)
+        
+    except KeyboardInterrupt:
+        logger.info("사용자에 의한 서버 종료")
+    except Exception as e:
+        logger.error(f"서버 실행 중 오류 발생: {str(e)}")
     finally:
-        shutdown()  # 서버 종료 시 정리 작업 수행
+        # UDP 핸들러 종료
+        if 'udp_handler' in locals() and udp_handler:
+            udp_handler.stop()
+        
+        # 종료 작업 수행
+        shutdown()

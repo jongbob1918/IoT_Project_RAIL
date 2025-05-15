@@ -6,7 +6,7 @@ from datetime import datetime
 from utils.system import Controller
 from .rfid_handler import RFIDHandler
 from .access_manager import AccessManager
-from serial_handlers.gate_serial import GateSerialHandler
+from utils.serial_handlers.gate_serial import GateSerialHandler
 
 handler = GateSerialHandler(port='/dev/ttyUSB0')
 handler.connect()

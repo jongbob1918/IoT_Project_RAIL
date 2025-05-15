@@ -115,7 +115,7 @@ class TCPHandler:
                     self.message_buffers[client_id] = b""
                 
                 # 클라이언트 수신 스레드 시작
-                threading.Thread(target=self._handle_client, args=(client_id,), daemon=True).start()
+                threading.Thread(target=self._handle_client_data, args=(client_id,), daemon=True).start()
             
             except socket.timeout:
                 # 타임아웃은 정상 - 주기적으로 실행 상태 확인을 위함
@@ -126,42 +126,62 @@ class TCPHandler:
                     time.sleep(1)  # 연속 오류 방지
     
     # ==== 클라이언트 처리 ====
-    def _handle_client_data(self, client_socket):
-        """클라이언트 데이터 처리"""
+    def _handle_client_data(self, client_id):
+        """클라이언트 데이터 처리 스레드"""
         try:
-            data = client_socket.recv(1024)
-            
-            if not data:
-                # 연결 종료
-                self._disconnect_client(client_socket)
-                return
+            # client_id가 문자열인지 확인 (소켓으로 호출된 경우)
+            if hasattr(client_id, 'recv'):  # 소켓 객체인 경우
+                # 클라이언트 ID 찾기
+                client_socket = client_id
+                client_id = None
                 
-            # 데이터 디코딩
-            try:
-                decoded_data = data.decode('utf-8', errors='ignore')
+                for cid, info in list(self.clients.items()):
+                    if info['socket'] == client_socket:
+                        client_id = cid
+                        break
+                        
+                if client_id is None:
+                    logger.error("알 수 없는 클라이언트 소켓")
+                    return
+                    
+            # 소켓 객체 가져오기
+            with self.client_lock:
+                if client_id not in self.clients:
+                    logger.error(f"존재하지 않는 클라이언트 ID: {client_id}")
+                    return
+                    
+                client_info = self.clients[client_id]
+                client_socket = client_info['socket']
                 
-                # 디버그 로그
-                addr = next((k for k, v in self.clients.items() if v == client_socket), "unknown")
-                logger.debug(f"데이터 수신: {addr} -> {decoded_data.strip()}")
-            except:
-                logger.warning("데이터 디코딩 오류")
-                return
-                
-            # 줄바꿈으로 메시지 분리
-            messages = decoded_data.split('\n')
-            
-            # 빈 문자열 제거 및 각 메시지 처리
-            for msg in messages:
-                if msg.strip():
-                    self._process_message(client_socket, msg.strip())
-                
-        except ConnectionResetError:
-            # 클라이언트 연결 끊김
-            logger.info("클라이언트 연결 리셋")
-            self._disconnect_client(client_socket)
+            # 데이터 수신 루프
+            while self.running:
+                try:
+                    data = client_socket.recv(1024)
+                    if not data:
+                        logger.debug(f"클라이언트 {client_id} 연결 종료")
+                        break
+                    
+                    # 데이터 처리
+                    self._process_data(client_id, data)
+                    
+                    # 활동 시간 업데이트
+                    with self.client_lock:
+                        if client_id in self.clients:
+                            self.clients[client_id]['last_activity'] = time.time()
+                    
+                except ConnectionResetError:
+                    logger.info(f"클라이언트 {client_id} 연결 리셋")
+                    break
+                except Exception as e:
+                    logger.error(f"클라이언트 {client_id} 데이터 수신 중 오류: {str(e)}")
+                    break
+        
         except Exception as e:
             logger.error(f"클라이언트 데이터 처리 오류: {str(e)}")
-            self._disconnect_client(client_socket)
+        
+        finally:
+            # 클라이언트 연결 종료 처리
+            self._remove_client(client_id)
     
     # ==== 데이터 처리 ====
     def _process_data(self, client_id: str, data: bytes):
@@ -443,8 +463,26 @@ class TCPHandler:
                     connected_devices.append(device_id)
         
         return connected_devices
+
     
     # ==== 디바이스 연결 상태 확인 ====
     def is_device_connected(self, device_id: str) -> bool:
         """특정 디바이스의 연결 상태를 확인합니다."""
         return self._find_client_by_device(device_id) is not None
+    
+
+    def _disconnect_client(self, client_socket_or_id):
+        """호환성을 위한 메서드 - 클라이언트 연결 종료"""
+        try:
+            # 소켓 객체로 클라이언트 ID 찾기
+            if hasattr(client_socket_or_id, 'recv'):  # 소켓 객체인 경우
+                for cid, info in list(self.clients.items()):
+                    if info['socket'] == client_socket_or_id:
+                        self._remove_client(cid)
+                        return
+            else:  # client_id인 경우
+                self._remove_client(client_socket_or_id)
+        
+        except Exception as e:
+            logger.error(f"클라이언트 연결 종료 오류: {str(e)}")
+    

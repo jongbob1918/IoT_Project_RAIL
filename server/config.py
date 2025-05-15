@@ -21,12 +21,17 @@ SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
+# ===== UDP 설정 =====
+UDP_HOST = os.getenv("UDP_HOST", "192.168.2.2")
+UDP_PORT = int(os.getenv("UDP_PORT", "9000"))
+
+
 # 데이터베이스 설정
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_USER = os.getenv("DB_USER", "root")  # 기본값 수정
 DB_PASSWORD = os.getenv("DB_PASSWORD", "134679")  # 비밀번호 없이 설정
-DB_NAME = os.getenv("DB_NAME", "rail_automation")  # rail_automation 통일
+DB_NAME = os.getenv("DB_NAME", "rail_db")  
 DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # ===== TCP 하드웨어 통신 설정 =====

@@ -1,180 +1,162 @@
 import socket
+import threading
+import logging
 import cv2
 import numpy as np
+import time
 
-# === UDP 수신 설정 ===
-# UDP_IP = "0.0.0.0"
-UDP_IP = "192.168.2.198"
-# UDP_IP = "192.168.200.113"
-UDP_PORT = 8888
-PACKET_SIZE = 1024
+logger = logging.getLogger(__name__)
 
-# === TCP 서버 설정 (ESP32가 클라이언트로 연결)
-# SERVER_IP = "0.0.0.0"
-SERVER_IP = "192.168.2.198"
-# SERVER_IP = "192.168.200.113"
-SERVER_PORT = 9100
-
-# === TCP 서버 설정 (ESP32가 클라이언트로 연결)
-# SERVER_IP = "0.0.0.0"
-MAIN_SERVER_IP = "192.168.2.222"
-MAIN_SERVER_PORT = 9000
-
-# 창고 ID → MV 코드 매핑
-mv_mapping = {
-    'A': 'MV0',
-    'B': 'MV1',
-    'C': 'MV2',
-    'D': 'MV3',
-    'E': 'MV4'
-}
-
-# === TCP 서버 시작 ===
-server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server_sock.bind((SERVER_IP, SERVER_PORT))
-server_sock.listen(1)
-
-print(f"[📡] TCP 서버 시작됨. ESP32 접속 대기 중 {SERVER_PORT}...")
-conn, addr = server_sock.accept()
-print(f"[✅] ESP32 연결됨: {addr}")
-
-# === MAIN SERVER ===
-# === MAIN 서버 TCP 클라이언트 소켓 연결 ===
-try:
-    main_conn = socket.create_connection((MAIN_SERVER_IP, MAIN_SERVER_PORT))
-    print(f"[🌐] 메인 서버 연결됨: {MAIN_SERVER_IP}:{MAIN_SERVER_PORT}")
-except Exception as e:
-    print(f"[X] 메인 서버 연결 실패: {e}")
-    main_conn = None
-
-
-# === UDP 수신 소켓 설정 ===
-udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-udp_sock.bind((UDP_IP, UDP_PORT))
-udp_sock.settimeout(5)
-
-buffer = bytearray()
-receiving = False
-expected_size = 0
-last_sent_data = ""  # 중복 전송 방지
-qr_detector = cv2.QRCodeDetector()
-
-print(f"[📷] UDP 수신 대기 중 {UDP_PORT}...")
-
-# === 메인 루프 ===
-while True:
-    try:
-        data, _ = udp_sock.recvfrom(PACKET_SIZE + 50)
-
-        if data.startswith(b'FRAME_START'):
-            buffer.clear()
-            parts = data.decode().strip().split(':')
-            if len(parts) == 2:
-                expected_size = int(parts[1])
-                receiving = True
-                # print(f"[▶] 수신 시작: {expected_size} bytes")
-
-        elif data.startswith(b'FRAME_END'):
-            # print(f"[■] 수신 완료: {len(buffer)} bytes")
-
-            if len(buffer) == expected_size:
-                # jpg = np.frombuffer(buffer, dtype=np.uint8)
-                jpg = np.frombuffer(bytes(buffer), dtype=np.uint8)
-                img = cv2.imdecode(jpg, cv2.IMREAD_COLOR)
-
-                if img is None:
-                    print("[!] 이미지 디코딩 실패")
-                    continue
-
-                if img is not None:
-                    qr_data, points, _ = qr_detector.detectAndDecode(img)
-                    
-                    # # points가 None이거나 면적이 0인 경우 처리
-                    # if points is None or cv2.contourArea(points.astype(np.float32)) <= 0.0:
-                    #     print("[⚠️] 유효하지 않은 QR 코드 좌표 (면적 0)")
-                    #     continue
-                    # MAIN SERVER
-                    if len(qr_data) >= 1:
-                        warehouse_id = qr_data[0].upper()
-                        mv_cmd = mv_mapping.get(warehouse_id, "MVX")
-                        
-                        if qr_data != last_sent_data and mv_cmd.startswith("MV"):
-                            try:
-                                # ESP32로 전송
-                                conn.sendall((qr_data + '\n').encode())
-                                print(f"[📤] ESP32로 전송됨: {qr_data}")
-                                last_sent_data = qr_data
-
-                                # # 메인 서버로도 전송
-                                # if main_conn:
-                                #     main_conn.sendall(("SEbc" + qr_data + '\n').encode())
-                                #     print(f"[📤] 메인 서버로 전송됨: {qr_data}")
-
-                            except Exception as e:
-                                print(f"[X] TCP 전송 오류: {e}")
-                                break
-                    
-                    if qr_data:
-                        print(f"[QR] 인식됨: {qr_data}")
-                        if points is not None and points.size >= 4:
-                            # points = points.astype(int).reshape(-1, 2)
-                            # cv2.polylines(img, [points], True, (0, 255, 0), 2)
-                            # x, y = points[0]
-                            # cv2.putText(img, qr_data, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                            area = cv2.contourArea(points.astype(np.float32))
-                            if area > 1.0:  # 유효 면적인 경우만 그리기
-                                try:
-                                    points = points.astype(int).reshape(-1, 2)
-                                    cv2.polylines(img, [points], True, (0, 255, 0), 2)
-                                    x, y = points[0]
-                                    cv2.putText(img, qr_data, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                                except Exception as e:
-                                    print(f"[⚠️] QR 시각화 실패: {e}")
-
-                        # QR → 명령 → ESP32 전송
-                        if len(qr_data) >= 1:
-                            warehouse_id = qr_data[0].upper()
-                            mv_cmd = mv_mapping.get(warehouse_id, "MVX")
-                            if qr_data != last_sent_data and mv_cmd.startswith("MV"):
-                                try:
-                                    # conn.sendall((mv_cmd + '\n').encode())
-                                    conn.sendall((qr_data + '\n').encode())
-                                    print(f"[📤] ESP32로 전송됨: {mv_cmd}")
-                                    last_sent_data = qr_data
-                                except Exception as e:
-                                    print(f"[X] TCP 전송 오류: {e}")
-                                    break
+class UDPBarcodeHandler:
+    def __init__(self, host='0.0.0.0', port=9000, callback=None):
+        """UDP 바코드 핸들러 초기화
+        
+        Args:
+            host (str): 바인딩할 호스트 주소
+            port (int): 바인딩할 포트 번호
+            callback (callable): 바코드 인식 시 호출할 콜백 함수
+        """
+        self.host = host
+        self.port = port
+        self.callback = callback
+        self.running = False
+        self.udp_socket = None
+        self.thread = None
+        
+        # 버퍼 및 상태 관리 변수
+        self.buffer = bytearray()
+        self.receiving = False
+        self.expected_size = 0
+        self.last_sent_data = ""  # 중복 전송 방지
+        
+        # QR 코드 감지기 초기화
+        try:
+            self.qr_detector = cv2.QRCodeDetector()
+            logger.info("QR 코드 감지기 초기화 성공")
+        except Exception as e:
+            logger.error(f"QR 코드 감지기 초기화 실패: {str(e)}")
+            self.qr_detector = None
+        
+        logger.info("UDP 바코드 핸들러 초기화 완료")
+    
+    def start(self):
+        """UDP 바코드 핸들러 시작"""
+        if self.running:
+            logger.warning("UDP 바코드 핸들러가 이미 실행 중입니다.")
+            return False
+            
+        try:
+            # UDP 소켓 설정
+            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.udp_socket.bind((self.host, self.port))
+            self.udp_socket.settimeout(5)
+            self.running = True
+            
+            logger.info(f"UDP 바코드 핸들러 시작됨: {self.host}:{self.port}")
+            
+            # 수신 스레드 시작
+            self.thread = threading.Thread(target=self._receive_loop, daemon=True)
+            self.thread.start()
+            
+            return True
+        except Exception as e:
+            logger.error(f"UDP 바코드 핸들러 시작 실패: {str(e)}")
+            return False
+    
+    def stop(self):
+        """UDP 바코드 핸들러 종료"""
+        logger.info("UDP 바코드 핸들러 종료 중...")
+        self.running = False
+        
+        # 소켓 닫기
+        if self.udp_socket:
+            try:
+                self.udp_socket.close()
+                logger.debug("UDP 소켓 닫힘")
+            except Exception as e:
+                logger.error(f"UDP 소켓 종료 중 오류: {str(e)}")
+        
+        # 스레드 종료 대기
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=2.0)
+            if self.thread.is_alive():
+                logger.warning("UDP 핸들러 스레드가 2초 내에 종료되지 않았습니다.")
+            
+        logger.info("UDP 바코드 핸들러 종료됨")
+    
+    def _receive_loop(self):
+        """UDP 데이터 수신 루프"""
+        PACKET_SIZE = 1024
+        
+        logger.info("UDP 데이터 수신 루프 시작")
+        while self.running:
+            try:
+                data, addr = self.udp_socket.recvfrom(PACKET_SIZE + 50)
+                logger.debug(f"UDP 데이터 수신: {len(data)} 바이트 (from {addr})")
                 
-                elif len(buffer) != expected_size:
-                    print(f"[!] 불완전한 프레임: {len(buffer)} / {expected_size}")
-                    receiving = False
-                    buffer.clear()
-                    continue  # 잘못된 프레임은 무시
-
-                cv2.imshow("QR UDP Stream", img)
-                if cv2.waitKey(1) == 27:
-                    break
-            else:
-                print(f"[!] 불완전한 프레임: {len(buffer)} / {expected_size}")
-
-            receiving = False
-            buffer.clear()
-
-        elif receiving:
-            buffer.extend(data)
-
-    except socket.timeout:
-        print("[!] UDP 타임아웃")
-    except Exception as e:
-        print(f"[X] 오류 발생: {e}")
-        break
-
-# === 종료 처리 ===
-if main_conn:
-    main_conn.close()
-conn.close()
-udp_sock.close()
-server_sock.close()
-cv2.destroyAllWindows()
-print("[🛑] 프로그램 종료")
+                if data.startswith(b'FRAME_START'):
+                    self.buffer.clear()
+                    parts = data.decode().strip().split(':')
+                    if len(parts) == 2:
+                        self.expected_size = int(parts[1])
+                        self.receiving = True
+                        logger.debug(f"프레임 수신 시작: {self.expected_size} 바이트")
+                
+                elif data.startswith(b'FRAME_END'):
+                    if len(self.buffer) == self.expected_size:
+                        logger.debug(f"프레임 수신 완료: {len(self.buffer)} 바이트")
+                        # 이미지 디코딩 및 QR 코드 인식
+                        self._process_image()
+                    else:
+                        logger.warning(f"불완전한 프레임: {len(self.buffer)}/{self.expected_size} 바이트")
+                    
+                    self.receiving = False
+                    self.buffer.clear()
+                
+                elif self.receiving:
+                    self.buffer.extend(data)
+            
+            except socket.timeout:
+                # 타임아웃은 정상적인 동작
+                pass
+            except Exception as e:
+                logger.error(f"UDP 데이터 처리 오류: {str(e)}")
+                time.sleep(1)  # 연속 오류 방지
+        
+        logger.info("UDP 데이터 수신 루프 종료")
+    
+    def _process_image(self):
+        """수신된 이미지 처리 및 QR 코드 인식"""
+        try:
+            # 바이트 배열을 이미지로 변환
+            jpg = np.frombuffer(bytes(self.buffer), dtype=np.uint8)
+            img = cv2.imdecode(jpg, cv2.IMREAD_COLOR)
+            
+            if img is None:
+                logger.warning("이미지 디코딩 실패")
+                return
+            
+            if self.qr_detector is None:
+                logger.error("QR 코드 감지기가 초기화되지 않았습니다.")
+                return
+            
+            # QR 코드 인식
+            qr_data, points, _ = self.qr_detector.detectAndDecode(img)
+            
+            if qr_data and qr_data != self.last_sent_data:
+                logger.info(f"QR 코드 인식됨: {qr_data}")
+                
+                # 콜백 함수 호출하여 바코드 데이터 전달
+                if self.callback:
+                    try:
+                        self.callback(qr_data)
+                        logger.debug(f"바코드 데이터 콜백 처리 성공: {qr_data}")
+                    except Exception as e:
+                        logger.error(f"바코드 콜백 처리 중 오류: {str(e)}")
+                
+                self.last_sent_data = qr_data
+            elif qr_data:
+                logger.debug(f"이미 처리된 QR 코드 무시: {qr_data}")
+        
+        except Exception as e:
+            logger.error(f"이미지 처리 중 오류: {str(e)}")

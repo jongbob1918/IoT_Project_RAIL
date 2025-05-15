@@ -31,8 +31,19 @@ class EnvController:
         # 창고별 상태 데이터
         self.warehouse_data = {}
         for wh in self.warehouses:
-            temp_min = CONFIG["WAREHOUSES"][wh]["temp_min"]
-            temp_max = CONFIG["WAREHOUSES"][wh]["temp_max"]
+            # CONFIG에서 창고 정보를 가져오되, 기본값 설정
+            warehouse_config = CONFIG.get("WAREHOUSES", {}).get(wh, {})
+            
+            # 기본값을 사용하여 온도 범위 설정
+            if wh == 'A':  # 냉동
+                temp_min = warehouse_config.get("temp_min", -25)
+                temp_max = warehouse_config.get("max_temp", -15)
+            elif wh == 'B':  # 냉장
+                temp_min = warehouse_config.get("temp_min", 0)
+                temp_max = warehouse_config.get("max_temp", 10)
+            else:  # C, 상온
+                temp_min = warehouse_config.get("temp_min", 15)
+                temp_max = warehouse_config.get("max_temp", 25)
             
             self.warehouse_data[wh] = {
                 "temp": None,

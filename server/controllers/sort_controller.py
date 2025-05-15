@@ -219,60 +219,42 @@ class SortController:
         except Exception as e:
             logger.error(f"분류 완료 이벤트 처리 오류: {str(e)}")
     
-    def _handle_barcode(self, payload):
-        """바코드 이벤트 처리"""
-        # 처리 중 표시
-        if self.processing_barcode:
-            logger.warning("이미 처리 중인 바코드가 있음")
-            return
-            
-        self.processing_barcode = True
+    def _handle_barcode(self, barcode_data):
+        """
+        바코드 데이터 처리 메서드
         
+        Args:
+            barcode_data (str): 바코드/QR에서 읽은 데이터
+        """
         try:
-            # 바코드 데이터 추출 (bc 이후의 문자열)
-            barcode_data = payload[2:] if len(payload) > 2 else ""
+            # 바코드 형식 확인 (bc 접두사가 없으면 추가)
+            if not barcode_data.startswith("bc"):
+                barcode_data = f"bc{barcode_data}"
+                
+            # 이전 코드와 동일한 처리를 위해 메시지 형식 변환
+            # SEbc 형식의 메시지로 변환해 같은 처리 루틴 사용
+            message = f"SE{barcode_data}\n"
             
-            if not barcode_data:
-                logger.warning("바코드 데이터 없음")
-                self._send_sort_command("E")  # 오류 분류
-                return
+            # 기존 메시지 처리 루틴 호출
+            self._process_sort_controller_message(message)
             
-            # 바코드 파싱
-            item_info = parse_barcode(barcode_data)
-            
-            if not item_info:
-                logger.error(f"바코드 파싱 실패: {barcode_data}")
-                self._send_sort_command("E")  # 오류 분류
-                return
-            
-            # 타임스탬프 추가
-            item_info["timestamp"] = time.time()
-            # 분류 명령 전송
-            self._send_sort_command(item_info["category"])
-            
-            # 로그에 추가
-            self._add_sort_log(item_info)
-            
-            # 바코드 인식 이벤트 발송
-            self.socketio.emit('barcode_scanned', item_info, namespace="/ws")
-            
-            # 표준 형식 이벤트도 추가로 발송
-            self._emit_standardized_event("sorter", "barcode_scanned", item_info)
-            
-            # DB에 바코드 스캔 로그만 저장 (선반 할당 없이)
-            if hasattr(self, 'db_helper') and self.db_helper:
-                self.db_helper.insert_barcode_scan(
-                    item_info["barcode"], 
-                    item_info["category"],
-                    item_info.get("item_code"),
-                    item_info.get("expiry_date")
-                )
+            # 소켓을 통해 클라이언트에 바코드 인식 이벤트 전송
+            if self.socketio:
+                event_data = {
+                    "type": "event",
+                    "category": "sort",
+                    "action": "barcode_detected",
+                    "payload": {
+                        "barcode": barcode_data[2:] if barcode_data.startswith("bc") else barcode_data
+                    },
+                    "timestamp": int(datetime.datetime.now().timestamp())
+                }
+                self.socketio.emit("event", event_data, namespace='/ws')
+                
+            self.logger.info(f"바코드 데이터 처리됨: {barcode_data}")
             
         except Exception as e:
-            logger.error(f"바코드 처리 오류: {str(e)}")
-            self._send_sort_command("E")  # 오류 분류
-        finally:
-            self.processing_barcode = False
+            self.logger.error(f"바코드 처리 중 오류 발생: {str(e)}")
     
     def _send_sort_command(self, zone):
         """분류 명령 전송"""
