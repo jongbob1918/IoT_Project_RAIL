@@ -109,13 +109,20 @@ else:
 # TCP 서버 시작
 tcp_handler.start()
 
+# TCP 서버 상태 확인 (디버깅 목적)
+logger.info("==== TCP 서버 상태 ====")
+logger.info(f"TCP 서버 주소: {SERVER_HOST}:{TCP_PORT}")
+if MULTI_PORT_MODE:
+    logger.info(f"TCP 멀티포트 모드: {TCP_PORTS}")
+logger.info("연결 대기 중... 장치가 연결되면 로그에 표시됩니다.")
+
 # 컨트롤러 초기화 함수
 def init_controllers():
     """모든 컨트롤러를 초기화하고 등록합니다."""
     controllers = {}
     
     # 분류기 컨트롤러 초기화
-    sort_controller = SortController(socketio, tcp_handler)
+    sort_controller = SortController(socketio, tcp_handler, db_manager)
     controllers["sort"] = sort_controller
     register_controller("sort", sort_controller)
     

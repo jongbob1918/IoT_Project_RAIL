@@ -17,10 +17,11 @@ class SortController:
     STATE_STOPPED = "stopped"
     STATE_RUNNING = "running"
     
-    def __init__(self, socketio: Any, tcp_handler):
+    def __init__(self, socketio: Any, tcp_handler, db_helper=None):
         """분류기 컨트롤러 초기화"""
         self.socketio = socketio
         self.tcp_handler = tcp_handler
+        self.db_helper = db_helper  # DB 헬퍼 설정
         
         # 상태 정보 초기화
         self.state = self.STATE_STOPPED
@@ -185,6 +186,26 @@ class SortController:
         except ValueError:
             logger.error(f"IR 센서 값 파싱 오류: {payload}")
     
+    def _handle_sort_complete(self, payload):
+        """분류 완료 이벤트 처리"""
+        try:
+            # 기존 코드...
+            
+            # DB에 분류 완료 로그 저장
+            if hasattr(self, 'db_helper') and self.db_helper and zone:
+                self.db_helper.update_sort_result(zone)
+                
+                # 최근 분류된 바코드가 있다면 그 정보도 함께 업데이트
+                if self.sort_logs and len(self.sort_logs) > 0:
+                    last_item = self.sort_logs[0]
+                    barcode = last_item.get("barcode")
+                    if barcode:
+                        self.db_helper.update_item_location(barcode, zone)
+            
+            # 이하 기존 코드...
+        except Exception as e:
+            logger.error(f"분류 완료 이벤트 처리 오류: {str(e)}")
+        
     def _handle_sort_complete(self, payload):
         """분류 완료 이벤트 처리"""
         try:
@@ -390,6 +411,19 @@ class SortController:
             
             # 프로토콜 형식으로 시작 명령 전송
             command = create_message(DEVICE_SORTER, MSG_COMMAND, SORT_CMD_START)
+            
+            # 디버그 로그 추가 - 문제 확인용
+            logger.info(f"분류기 시작 명령 생성: {command.strip()}")
+            
+            # 분류기 디바이스 연결 확인
+            is_connected = self.tcp_handler.is_device_connected(DEVICE_SORTER)
+            logger.info(f"분류기 디바이스 연결 상태: {is_connected}")
+            
+            # 연결되지 않았다면 클라이언트 연결 리스트 출력
+            if not is_connected:
+                connected_devices = self.tcp_handler.get_connected_devices()
+                logger.info(f"현재 연결된 디바이스 목록: {connected_devices}")
+                logger.warning("분류기 디바이스가 연결되어 있지 않습니다. 하드웨어 연결을 확인하세요.")
             
             # 명령 전송
             success = self.tcp_handler.send_message(DEVICE_SORTER, command)

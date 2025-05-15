@@ -369,7 +369,71 @@ class DataManager(QObject):
                 "type": type(e).__name__,
                 "message": str(e)
             }
-    
+    # data_manager.py에 추가할 메서드
+
+    def update_fan_status(self, warehouse_id, fan_mode, fan_speed):
+        """팬 상태 정보 업데이트
+        
+        Args:
+            warehouse_id (str): 창고 ID (A, B, C)
+            fan_mode (str): 팬 모드 (cool, heat, off)
+            fan_speed (int): 팬 속도 (0-3)
+        
+        Returns:
+            bool: 업데이트 성공 여부
+        """
+        try:
+            # warehouse_data 딕셔너리 업데이트
+            if warehouse_id in self.warehouse_data:
+                self.warehouse_data[warehouse_id]["fan_mode"] = fan_mode
+                self.warehouse_data[warehouse_id]["fan_speed"] = fan_speed
+                
+                # 알림 추가
+                mode_str = "냉방" if fan_mode == "cool" else "난방" if fan_mode == "heat" else "정지"
+                speed_str = "정지" if fan_speed == 0 else f"{fan_speed}단계"
+                
+                warehouse_name = "냉동 창고"
+                if warehouse_id == "B":
+                    warehouse_name = "냉장 창고"
+                elif warehouse_id == "C":
+                    warehouse_name = "상온 창고"
+                    
+                self.add_notification(f"{warehouse_name}({warehouse_id}) 팬 상태 변경: {mode_str}, {speed_str}")
+                
+                # 데이터 변경 이벤트 발생
+                self.warehouse_data_changed.emit()
+                
+                return True
+            else:
+                logger.warning(f"팬 상태 업데이트 실패: 존재하지 않는 창고 ID - {warehouse_id}")
+                return False
+        except Exception as e:
+            logger.error(f"팬 상태 업데이트 오류: {str(e)}")
+            return False
+
+    def get_fan_status(self, warehouse_id):
+        """창고 팬 상태 정보 조회
+        
+        Args:
+            warehouse_id (str): 창고 ID (A, B, C)
+        
+        Returns:
+            dict: 팬 상태 정보 (mode, speed) 또는 None
+        """
+        try:
+            if warehouse_id in self.warehouse_data:
+                warehouse = self.warehouse_data[warehouse_id]
+                return {
+                    "mode": warehouse.get("fan_mode", "off"),
+                    "speed": warehouse.get("fan_speed", 0)
+                }
+            else:
+                logger.warning(f"팬 상태 조회 실패: 존재하지 않는 창고 ID - {warehouse_id}")
+                return None
+        except Exception as e:
+            logger.error(f"팬 상태 조회 오류: {str(e)}")
+            return None
+        
     def _fetch_inventory_data(self):
         """재고 데이터 가져오기"""
         if not self.is_server_connected() or not self._should_update_data("inventory"):
@@ -691,11 +755,14 @@ class DataManager(QObject):
     
     # ==== 상태 변경 메서드 ====
     def add_notification(self, message):
-        """알림 목록에 메시지 추가"""
+        """알림 목록에 메시지 추가 (최대 100개 유지)"""
         self._notifications.append({
             "message": message,
             "timestamp": datetime.datetime.now().isoformat()
         })
+        # 최대 100개만 유지하도록 제한
+        if len(self._notifications) > 100:
+            self._notifications = self._notifications[-100:]
         self.notification_added.emit(message)
         logger.info(f"알림 추가: {message}")
     

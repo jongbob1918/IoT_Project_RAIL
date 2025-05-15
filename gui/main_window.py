@@ -75,7 +75,7 @@ class WindowClass(QMainWindow):
         """서버 연결 객체 초기화"""
         # config.py 파일의 설정과 일치하도록 서버 호스트 및 포트 설정
         #server_host = "192.168.2.2"  # config에서는 127.0.0.1으로 설정
-        server_host = "192.168.2.2"
+        server_host = "0.0.0.0"
         server_port = 8000         # config의 SERVER_PORT와 일치
         
         
@@ -205,24 +205,6 @@ class WindowClass(QMainWindow):
         # 서버에서 오는 이벤트를 각 페이지로 라우팅
         self.server_conn.eventReceived.connect(self.on_server_event)
     
-    def on_server_event(self, category, action, payload):
-        """서버 이벤트 수신 시 각 페이지에 전달"""
-        # API 구조와 일치하도록 업데이트
-        if category == "sorter" and hasattr(self.page_devices, "handleSorterEvent"):
-            self.page_devices.handleSorterEvent(action, payload)
-            # 대시보드에도 일부 이벤트 전달
-            if action == "status_update" and "is_running" in payload:
-                self.data_manager._conveyor_status = 1 if payload["is_running"] else 0
-                self.data_manager.conveyor_status_changed.emit()
-        elif category == "environment" and hasattr(self.page_environment, "handleEnvironmentEvent"):
-            self.page_environment.handleEnvironmentEvent(action, payload)
-            # 환경 데이터 대시보드에도 전달
-            if action == "temperature_update" and payload.get("warehouse_id") in self.data_manager._warehouse_data:
-                warehouse_id = payload.get("warehouse_id")
-                temperature = payload.get("temperature")  # temperature 필드명으로 수정
-                if temperature is not None:
-                    self.data_manager._warehouse_data[warehouse_id]["temperature"] = temperature
-
     def on_server_event(self, category, action, payload):
             """서버 이벤트 수신 시 각 페이지에 전달"""
             # API 구조와 일치하도록 업데이트

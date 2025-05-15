@@ -133,7 +133,64 @@ class DBManager:
             logger.error(f"쿼리 실행 실패: {str(e)}")
             logger.error(f"쿼리: {query}, 파라미터: {params}")
             return None
-    
+    def update_sort_result(self, zone):
+        """분류 완료 결과를 기록합니다."""
+        if not self.ensure_connection():
+            return False
+            
+        try:
+            query = """
+                UPDATE sort_stats 
+                SET count = count + 1 
+                WHERE zone = %s AND date = CURRENT_DATE()
+            """
+            rows_affected = self.execute_update(query, (zone,))
+            
+            # 해당 날짜에 레코드가 없으면 새로 생성
+            if rows_affected == 0:
+                query = """
+                    INSERT INTO sort_stats (zone, count, date) 
+                    VALUES (%s, 1, CURRENT_DATE())
+                """
+                self.execute_update(query, (zone,))
+                
+            return True
+        except Exception as e:
+            logger.error(f"분류 결과 업데이트 오류: {str(e)}")
+            return False
+
+    def update_item_location(self, barcode, zone):
+        """물품 위치 정보를 업데이트합니다."""
+        if not self.ensure_connection():
+            return False
+            
+        try:
+            # 물품 테이블에 해당 바코드가 있는지 확인
+            query = "SELECT id FROM inventory WHERE barcode = %s"
+            result = self.execute_query(query, (barcode,))
+            
+            if result and len(result) > 0:
+                # 기존 물품 업데이트
+                query = """
+                    UPDATE inventory 
+                    SET warehouse_id = %s, updated_at = NOW() 
+                    WHERE barcode = %s
+                """
+                self.execute_update(query, (zone, barcode))
+            else:
+                # 새 물품 추가 (기본 정보만)
+                query = """
+                    INSERT INTO inventory 
+                    (barcode, warehouse_id, entry_date) 
+                    VALUES (%s, %s, NOW())
+                """
+                self.execute_update(query, (barcode, zone))
+                
+            return True
+        except Exception as e:
+            logger.error(f"물품 위치 업데이트 오류: {str(e)}")
+            return False
+        
     def execute_update(self, query: str, params: Tuple = None) -> bool:
         """INSERT/UPDATE/DELETE 쿼리 실행"""
         if not self.ensure_connection():
@@ -151,6 +208,7 @@ class DBManager:
             logger.error(f"업데이트 실행 실패: {str(e)}")
             logger.error(f"쿼리: {query}, 파라미터: {params}")
             return False
+
     
     def get_connection_status(self) -> Dict[str, Any]:
         """데이터베이스 연결 상태 반환"""

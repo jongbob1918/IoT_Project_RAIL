@@ -61,47 +61,43 @@ class EnvController:
         tcp_handler.register_device_handler('env_controller', 'res', self.process_response)
         tcp_handler.register_device_handler('env_controller', 'err', self.process_error)
         
-        def set_temperature(self, warehouse, temperature):
-            """특정 창고의 온도를 설정합니다.
+    def set_temperature(self, warehouse, temperature):
+        """특정 창고의 온도를 설정합니다.
+        
+        Args:
+            warehouse: 창고 ID (A, B, C)
+            temperature: 설정할 온도 값 (정수)
             
-            Args:
-                warehouse: 창고 ID (A, B, C)
-                temperature: 설정할 온도 값 (정수)
-                
-            Returns:
-                dict: 성공/실패 상태와 메시지를 포함한 응답
-            """
-            # 창고 존재 확인
-            if warehouse not in self.warehouse_data:
-                logger.error(f"존재하지 않는 창고: {warehouse}")
-                return {"status": "error", "message": f"존재하지 않는 창고: {warehouse}"}
-                
-            # 온도 값을 정수로 변환 (API는 정수로 받음)
-            try:
-                temperature = int(temperature)
-            except (ValueError, TypeError):
-                logger.error(f"온도를 정수로 변환할 수 없음: {temperature}")
-                return {"status": "error", "message": f"온도를 정수로 변환할 수 없음: {temperature}"}
-                
-            # 유효 범위 확인
-            min_temp, max_temp = self.warehouse_data[warehouse]["temp_range"]
-            if temperature < min_temp or temperature > max_temp:
-                logger.error(f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다.")
-                return {"status": "error", "message": f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다."}
+        Returns:
+            dict: 성공/실패 상태와 메시지를 포함한 응답
+        """
+        # 창고 존재 확인
+        if warehouse not in self.warehouse_data:
+            logger.error(f"존재하지 않는 창고: {warehouse}")
+            return {"status": "error", "message": f"존재하지 않는 창고: {warehouse}"}
             
-            # set_target_temperature 메서드 호출
-            result = self.set_target_temperature(warehouse, temperature)
+        # 온도 값을 정수로 변환 (API는 정수로 받음)
+        try:
+            temperature = int(temperature)
+        except (ValueError, TypeError):
+            logger.error(f"온도를 정수로 변환할 수 없음: {temperature}")
+            return {"status": "error", "message": f"온도를 정수로 변환할 수 없음: {temperature}"}
             
-            # 결과 그대로 반환
-            return result
+        # 유효 범위 확인
+        min_temp, max_temp = self.warehouse_data[warehouse]["temp_range"]
+        if temperature < min_temp or temperature > max_temp:
+            logger.error(f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다.")
+            return {"status": "error", "message": f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다."}
+        
+        # set_target_temperature 메서드 호출
+        result = self.set_target_temperature(warehouse, temperature)
+        
+        # 결과 그대로 반환
+        return result
 
-    def process_event(self, message_data):
-        """이벤트 메시지 처리 - 'E' 타입 메시지"""
-        if 'content' not in message_data:
-            return
-            
-        content = message_data['content']
-        logger.debug(f"환경 제어 이벤트 수신: {content}")
+    def process_event(self, content):
+        """이벤트 처리 로직"""
+        logger.debug(f"환경 이벤트 수신: {content}")
         
         # 원본 콘텐츠 저장
         original_content = content
@@ -127,17 +123,20 @@ class EnvController:
                 self._set_warning_status(warehouse, status)
                 return True
                 
-        elif content[0:1] in ['A', 'B', 'C'] and len(content) >= 2:
-            # 팬 상태 - 'AC2', 'B0', 'CH1'
+        elif len(content) >= 2:
+            # 팬 상태 - 'AC2', 'BC2', 'CH3' 등
+            # 첫 글자가 창고 ID (A, B, C)인지 확인
             warehouse = content[0:1]
-            fan_status = content[1:]
-            self._set_fan_status(warehouse, fan_status)
-            return True
+            if warehouse in ['A', 'B', 'C'] and len(content) >= 2:
+                # 나머지는 팬 상태 (C2, H1, 00 등)
+                fan_status = content[1:]
+                self._set_fan_status(warehouse, fan_status)
+                return True
         
         # 이 외의 경우 로그로 기록
         logger.debug(f"처리되지 않은 이벤트: {original_content}")
         return False
-    
+        
     def process_command(self, message_data):
         """명령 메시지 처리 - 'C' 타입 메시지"""
         if 'content' not in message_data:
@@ -153,47 +152,6 @@ class EnvController:
         if content.startswith('HC'):
             content = content[2:]
         
-        # 명령 타입별 처리
-        if content.startswith('f') and len(content) >= 3:
-            # 팬 제어 - 'fA1', 'fB2', 'fC0'
-            warehouse = content[1:2]
-            status = content[2:]
-            
-            if warehouse in ['A', 'B', 'C']:
-                self._set_fan_status(warehouse, status)
-                logger.info(f"팬 제어 명령 수행: 창고 {warehouse}, 상태 {status}")
-                return True
-        
-        elif content.startswith('p') and len(content) >= 2:
-            # 온도 설정 - 'pA-20', 'pB5', 'pC22'
-            warehouse = content[1:2]
-            temp_str = content[2:]
-            
-            try:
-                temperature = float(temp_str)
-                
-                if warehouse in ['A', 'B', 'C']:
-                    result = self.set_target_temperature(warehouse, temperature)
-                    if result["status"] == "ok":
-                        logger.info(f"온도 설정 성공: 창고 {warehouse}, 온도 {temperature}°C")
-                    else:
-                        logger.warning(f"온도 설정 실패: {result['message']}")
-                    return True
-            except ValueError:
-                logger.warning(f"잘못된 온도 값: {temp_str}")
-                return False
-        
-        # 모든 팬 정지 명령
-        elif content.startswith('0') and len(content) >= 2:
-            # 모든 팬 정지 - '00'
-            for wh in self.warehouses:
-                self._set_fan_status(wh, "00")
-            logger.info("모든 팬 정지 명령 수행")
-            return True
-        
-        # 이 외의 경우 로그로 기록
-        logger.debug(f"처리되지 않은 명령: {original_content}")
-        return False
     
     def process_response(self, message_data):
         """응답 메시지 처리 - 'R' 타입 메시지"""
@@ -295,15 +253,15 @@ class EnvController:
             # 모드 설정 (첫 번째 문자)
             mode_char = status_str[0]
             
-            # 창고 A, B는 난방 모드를 지원하지 않음
-            if warehouse in ['A', 'B'] and mode_char == 'H':
-                mode_char = '0'  # 정지로 변경
-            
             # 모드 결정
             if mode_char == 'C':
                 fan_mode = self.FAN_COOLING
-            elif mode_char == 'H' and warehouse == 'C':  # C 창고만 난방 지원
-                fan_mode = self.FAN_HEATING
+            elif mode_char == 'H':
+                # C 창고만 난방 지원 (A, B는 난방모드 무시)
+                if warehouse == 'C':
+                    fan_mode = self.FAN_HEATING
+                else:
+                    fan_mode = self.FAN_OFF
             else:  # '0', 'O' 또는 다른 문자
                 fan_mode = self.FAN_OFF
             
@@ -313,7 +271,7 @@ class EnvController:
                 # 유효한 범위로 제한 (0-3)
                 speed = max(0, min(speed, 3))
                 
-                # 정지 모드면 속도는 0
+                # 모드가 FAN_OFF면 속도도 0으로 설정
                 if fan_mode == self.FAN_OFF:
                     speed = 0
             except (ValueError, IndexError):
@@ -322,10 +280,10 @@ class EnvController:
             # 상태 업데이트
             self.warehouse_data[warehouse]["fan_mode"] = fan_mode
             self.warehouse_data[warehouse]["fan_speed"] = speed
-            
+        
             # 로그
             mode_str = "냉방" if fan_mode == self.FAN_COOLING else \
-                       "난방" if fan_mode == self.FAN_HEATING else "정지"
+                    "난방" if fan_mode == self.FAN_HEATING else "정지"
             speed_str = "정지" if speed == 0 else f"속도 {speed}"
             logger.info(f"창고 {warehouse} 팬 상태 변경: {mode_str}, {speed_str}")
             

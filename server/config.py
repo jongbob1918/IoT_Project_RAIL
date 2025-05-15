@@ -17,7 +17,7 @@ except ImportError:
     pass     # python-dotenv가 설치되지 않은 경우 무시
 
 # ===== 서버 설정 =====
-SERVER_HOST = os.getenv("SERVER_HOST", "192.168.2.2")
+SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 SERVER_PORT = int(os.getenv("SERVER_PORT", "8000"))
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 

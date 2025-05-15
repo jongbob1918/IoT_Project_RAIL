@@ -39,6 +39,13 @@ class EnvironmentPage(BasePage):
         # 초기 창고 상태 정보 설정
         self.initialize_warehouse_data()
         
+        # 팬 상태 표시 라벨 생성 (이 줄을 추가)
+        self.create_fan_status_labels()
+        
+        # 개발 모드인 경우 시뮬레이션 컨트롤 추가 (선택 사항)
+        if hasattr(self.data_manager, 'DEBUG_MODE') and self.data_manager.DEBUG_MODE:
+            self.setup_simulation_controls()
+        
         # 창고별 위젯 매핑
         self.map_warehouse_widgets()
         
@@ -64,10 +71,34 @@ class EnvironmentPage(BasePage):
     def initialize_warehouse_data(self):
         """초기 창고 상태 정보 설정"""
         self.warehouses = {
-            "A": {"name": "냉동 창고 (A)", "current_temp": 0.0, "target_temp": -24.0, "status": "알 수 없음", "mode": "정지"},
-            "B": {"name": "냉장 창고 (B)", "current_temp": 0.0, "target_temp": 5.0, "status": "알 수 없음", "mode": "정지"},
-            "C": {"name": "상온 창고 (C)", "current_temp": 0.0, "target_temp": 20.0, "status": "알 수 없음", "mode": "정지"}
-        }
+            "A": {
+                "name": "냉동 창고 (A)", 
+                "current_temp": 0.0, 
+                "target_temp": -24.0, 
+                "status": "알 수 없음", 
+                "mode": "정지",
+                "fan_mode": "off",  # 팬 모드 추가: off, cool, heat
+                "fan_speed": 0      # 팬 속도 추가: 0(정지), 1(저속), 2(중속), 3(고속)
+            },
+            "B": {
+                "name": "냉장 창고 (B)", 
+                "current_temp": 0.0, 
+                "target_temp": 5.0, 
+                "status": "알 수 없음", 
+                "mode": "정지",
+                "fan_mode": "off",
+                "fan_speed": 0
+            },
+            "C": {
+                "name": "상온 창고 (C)", 
+                "current_temp": 0.0, 
+                "target_temp": 20.0, 
+                "status": "알 수 없음", 
+                "mode": "정지",
+                "fan_mode": "off",
+                "fan_speed": 0
+            }
+    }
     
     def map_warehouse_widgets(self):
         """각 창고별 위젯 매핑"""
@@ -78,6 +109,7 @@ class EnvironmentPage(BasePage):
                 "temp_input": self.input_temp_A,
                 "status_indicator": self.label_status_A,
                 "mode_indicator": self.label_mode_A,
+                "fan_status": getattr(self, "label_fan_status_A", None),  # 팬 상태 라벨 추가
                 "set_temp_btn": self.btn_set_temp_A
             },
             "B": {
@@ -86,6 +118,7 @@ class EnvironmentPage(BasePage):
                 "temp_input": self.input_temp_B,
                 "status_indicator": self.label_status_B,
                 "mode_indicator": self.label_mode_B,
+                "fan_status": getattr(self, "label_fan_status_B", None),  # 팬 상태 라벨 추가
                 "set_temp_btn": self.btn_set_temp_B
             },
             "C": {
@@ -94,6 +127,7 @@ class EnvironmentPage(BasePage):
                 "temp_input": self.input_temp_C,
                 "status_indicator": self.label_status_C,
                 "mode_indicator": self.label_mode_C,
+                "fan_status": getattr(self, "label_fan_status_C", None),  # 팬 상태 라벨 추가
                 "set_temp_btn": self.btn_set_temp_C
             }
         }
@@ -164,6 +198,32 @@ class EnvironmentPage(BasePage):
             logger.error(f"창고 데이터 업데이트 오류: {str(e)}")
             self.handle_data_fetch_error("창고 데이터 업데이트", str(e))
     
+    def create_fan_status_labels(self):
+        """팬 상태 표시 라벨 동적 생성"""
+        try:
+            # 각 창고별 팬 상태 라벨 생성
+            frames = [self.frame_A, self.frame_B, self.frame_C]
+            warehouse_ids = ["A", "B", "C"]
+            
+            for i, frame in enumerate(frames):
+                wh_id = warehouse_ids[i]
+                
+                # 팬 상태 라벨 생성
+                label_fan_status = QLabel(frame)
+                label_fan_status.setGeometry(QRect(440, 120, 121, 21))
+                label_fan_status.setStyleSheet("background-color: #9E9E9E; color: white; padding: 3px; border-radius: 3px;")
+                label_fan_status.setText("팬: 정지")
+                label_fan_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                label_fan_status.setObjectName(f"label_fan_status_{wh_id}")
+                
+                # 클래스 변수로 저장
+                setattr(self, f"label_fan_status_{wh_id}", label_fan_status)
+                
+                logger.debug(f"창고 {wh_id}의 팬 상태 라벨 생성 완료")
+                
+        except Exception as e:
+            logger.error(f"팬 상태 라벨 생성 오류: {str(e)}")
+
     def update_operation_mode(self, wh_id):
         """운영 모드(냉방/난방/정지) 업데이트"""
         try:
@@ -207,7 +267,7 @@ class EnvironmentPage(BasePage):
                     widgets["status_indicator"].setText("정상")
                     widgets["status_indicator"].setStyleSheet("background-color: #4CAF50; color: white; border-radius: 5px; padding: 2px;")
                     # 정상 상태일 때 mode_indicator 숨기기
-                    widgets["mode_indicator"].hide()
+                    widgets["mode_indicator"].show()  # 원래 코드는 hide()였지만 UI 파일을 보니 항상 표시하는 것 같음
                 else:  # 주의, 비정상 또는 연결 안됨 상태
                     if warehouse["status"] == "주의":
                         widgets["status_indicator"].setText("주의")
@@ -219,16 +279,44 @@ class EnvironmentPage(BasePage):
                     # 비정상 상태일 때 mode_indicator 표시
                     widgets["mode_indicator"].show()
                     
-                    # 모드 표시 업데이트
-                    if warehouse["mode"] == "냉방 모드":
-                        widgets["mode_indicator"].setText("냉방 모드")
-                        widgets["mode_indicator"].setStyleSheet("background-color: #2196F3; color: white; padding: 3px; border-radius: 3px;")
-                    elif warehouse["mode"] == "난방 모드":
-                        widgets["mode_indicator"].setText("난방 모드")
-                        widgets["mode_indicator"].setStyleSheet("background-color: #FF5722; color: white; padding: 3px; border-radius: 3px;")
-                    else:  # 정지 모드
-                        widgets["mode_indicator"].setText("정지")
-                        widgets["mode_indicator"].setStyleSheet("background-color: #9E9E9E; color: white; padding: 3px; border-radius: 3px;")
+                # 모드 표시 업데이트
+                if warehouse["mode"] == "냉방 모드":
+                    widgets["mode_indicator"].setText("냉방 모드")
+                    widgets["mode_indicator"].setStyleSheet("background-color: #2196F3; color: white; padding: 3px; border-radius: 3px;")
+                elif warehouse["mode"] == "난방 모드":
+                    widgets["mode_indicator"].setText("난방 모드")
+                    widgets["mode_indicator"].setStyleSheet("background-color: #FF5722; color: white; padding: 3px; border-radius: 3px;")
+                else:  # 정지 모드
+                    widgets["mode_indicator"].setText("정지")
+                    widgets["mode_indicator"].setStyleSheet("background-color: #9E9E9E; color: white; padding: 3px; border-radius: 3px;")
+                
+                # 팬 상태 표시 업데이트 (새로 추가)
+                if "fan_status" in widgets and widgets["fan_status"] is not None:
+                    fan_mode = warehouse.get("fan_mode", "off")
+                    fan_speed = warehouse.get("fan_speed", 0)
+                    
+                    if fan_mode == "cool":
+                        if fan_speed == 0:
+                            fan_text = "팬: 정지"
+                            fan_color = "#9E9E9E"  # 회색
+                        else:
+                            fan_text = f"냉방 팬: {fan_speed}단계"
+                            fan_color = "#2196F3"  # 파란색
+                    elif fan_mode == "heat":
+                        if fan_speed == 0:
+                            fan_text = "팬: 정지"
+                            fan_color = "#9E9E9E"  # 회색
+                        else:
+                            fan_text = f"난방 팬: {fan_speed}단계"
+                            fan_color = "#FF5722"  # 주황색
+                    else:  # off
+                        fan_text = "팬: 정지"
+                        fan_color = "#9E9E9E"  # 회색
+                    
+                    widgets["fan_status"].setText(fan_text)
+                    widgets["fan_status"].setStyleSheet(f"background-color: {fan_color}; color: white; padding: 3px; border-radius: 3px;")
+                    widgets["fan_status"].show()
+                    
         except Exception as e:
             logger.error(f"UI 업데이트 오류: {str(e)}")
             self.show_status_message(f"UI 업데이트 오류: {str(e)}", is_error=True)

@@ -311,7 +311,28 @@ class TCPHandler:
         client_id = self._find_client_by_device(device_id)
         
         if not client_id:
-            logger.warning(f"장치 {device_id} 연결 없음: 메시지 전송 실패")
+            logger.error(f"장치 {device_id} 연결 없음: 메시지 전송 실패")
+            
+            # 디버그 정보 - 연결된 모든 클라이언트 목록 출력
+            with self.client_lock:
+                client_info = []
+                for cid, info in self.clients.items():
+                    device = info.get('device_id', 'None')
+                    addr = info.get('address', ('unknown', 0))
+                    client_info.append(f"{cid} (device: {device}, addr: {addr[0]}:{addr[1]})")
+                
+                if client_info:
+                    logger.info(f"현재 연결된 클라이언트: {', '.join(client_info)}")
+                else:
+                    logger.warning("연결된 클라이언트가 없습니다.")
+            
+            # 매핑 정보도 출력
+            mapped_id = None
+            reverse_mapping = {v: k for k, v in self.DEVICE_ID_MAPPING.items()}
+            if device_id in reverse_mapping:
+                mapped_id = reverse_mapping[device_id]
+                logger.info(f"매핑된 원래 장치 ID: {mapped_id}")
+            
             return False
         
         try:
@@ -331,7 +352,7 @@ class TCPHandler:
                 # 활동 시간 업데이트
                 self.clients[client_id]['last_activity'] = time.time()
                 
-                logger.debug(f"메시지 전송 ({device_id}): {command.strip()}")
+                logger.info(f"메시지 전송 성공 ({device_id}): {command.strip()}")
                 return True
         
         except Exception as e:
