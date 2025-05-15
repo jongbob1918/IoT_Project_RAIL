@@ -126,44 +126,42 @@ class TCPHandler:
                     time.sleep(1)  # 연속 오류 방지
     
     # ==== 클라이언트 처리 ====
-    def _handle_client(self, client_id: str):
-        """클라이언트 데이터 수신 및 처리"""
-        if client_id not in self.clients:
-            return
-        
-        client_socket = self.clients[client_id]['socket']
-        client_socket.settimeout(5.0)  # 5초 타임아웃
-        
-        while self.running:
-            try:
-                # 데이터 수신
-                data = client_socket.recv(4096)
-                
-                if not data:
-                    # 연결 종료
-                    logger.info(f"클라이언트 {client_id} 연결 종료")
-                    self._remove_client(client_id)
-                    break
-                
-                # 마지막 활동 시간 업데이트
-                with self.client_lock:
-                    if client_id in self.clients:
-                        self.clients[client_id]['last_activity'] = time.time()
-                
-                # 데이터 처리
-                self._process_data(client_id, data)
+    def _handle_client_data(self, client_socket):
+        """클라이언트 데이터 처리"""
+        try:
+            data = client_socket.recv(1024)
             
-            except socket.timeout:
-                # 타임아웃은 정상 - 주기적으로 실행 상태 확인을 위함
-                continue
-            except ConnectionResetError:
-                logger.warning(f"클라이언트 {client_id} 연결 리셋됨")
-                self._remove_client(client_id)
-                break
-            except Exception as e:
-                logger.error(f"클라이언트 {client_id} 처리 중 오류: {str(e)}")
-                self._remove_client(client_id)
-                break
+            if not data:
+                # 연결 종료
+                self._disconnect_client(client_socket)
+                return
+                
+            # 데이터 디코딩
+            try:
+                decoded_data = data.decode('utf-8', errors='ignore')
+                
+                # 디버그 로그
+                addr = next((k for k, v in self.clients.items() if v == client_socket), "unknown")
+                logger.debug(f"데이터 수신: {addr} -> {decoded_data.strip()}")
+            except:
+                logger.warning("데이터 디코딩 오류")
+                return
+                
+            # 줄바꿈으로 메시지 분리
+            messages = decoded_data.split('\n')
+            
+            # 빈 문자열 제거 및 각 메시지 처리
+            for msg in messages:
+                if msg.strip():
+                    self._process_message(client_socket, msg.strip())
+                
+        except ConnectionResetError:
+            # 클라이언트 연결 끊김
+            logger.info("클라이언트 연결 리셋")
+            self._disconnect_client(client_socket)
+        except Exception as e:
+            logger.error(f"클라이언트 데이터 처리 오류: {str(e)}")
+            self._disconnect_client(client_socket)
     
     # ==== 데이터 처리 ====
     def _process_data(self, client_id: str, data: bytes):

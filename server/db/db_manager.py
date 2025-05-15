@@ -42,9 +42,9 @@ class DBManager:
     
     def __init__(self):
         """초기화 (싱글톤이므로 한 번만 실행)"""
-        if self._initialized:
+        if hasattr(self, '_initialized') and self._initialized:
             return
-            
+                
         # 데이터베이스 연결 정보 (config.py 또는 환경 변수 사용)
         if USE_CONFIG:
             self.host = DB_HOST
@@ -55,11 +55,11 @@ class DBManager:
             logger.info("config.py에서 데이터베이스 설정을 로드했습니다.")
         else:
             self.host = os.getenv("DB_HOST", "localhost")
-            self.port = os.getenv("DB_PORT", "3306")
+            self.port = int(os.getenv("DB_PORT", "3306"))
             self.user = os.getenv("DB_USER", "root")
-            self.password = os.getenv("DB_PASSWORD", " ")
+            self.password = os.getenv("DB_PASSWORD", "134679")  # real_db.py와 동일한 기본값 사용
             self.database = os.getenv("DB_NAME", "rail_db")
-            logger.info("환경 변수에서 데이터베이스 설정을 로드했습니다.")
+            logger.info(f"환경 변수에서 데이터베이스 설정을 로드했습니다. (host: {self.host}, user: {self.user}, db: {self.database})")
         
         # 데이터베이스 연결 객체
         self.connection = None
@@ -80,8 +80,11 @@ class DBManager:
             logger.warning("MySQL 라이브러리가 설치되어 있지 않습니다.")
             self.connected = False
             return False
-            
+                
         try:
+            # 연결 시도 전 연결 정보 로깅 (암호는 제외)
+            logger.debug(f"MySQL 연결 시도: {self.host}:{self.port}, 사용자: {self.user}, DB: {self.database}")
+            
             self.connection = mysql.connector.connect(
                 host=self.host,
                 port=self.port,
@@ -89,32 +92,62 @@ class DBManager:
                 password=self.password,
                 database=self.database
             )
-            
+                
             if self.connection.is_connected():
-                logger.info(f"MySQL 데이터베이스 '{self.database}'에 연결되었습니다.")
+                db_info = self.connection.get_server_info()
+                logger.info(f"MySQL 데이터베이스 '{self.database}'에 연결되었습니다. 서버 버전: {db_info}")
                 self.connected = True
                 return True
             else:
                 logger.error("MySQL 데이터베이스 연결 실패")
                 self.connected = False
                 return False
-                
+                    
         except Exception as e:
             logger.error(f"데이터베이스 연결 오류: {str(e)}")
+            # 주요 오류 유형에 따른 추가 안내 메시지
+            if "Access denied" in str(e):
+                logger.error("사용자 이름 또는 비밀번호가 잘못되었습니다. 환경 변수나 config.py를 확인하세요.")
+            elif "Unknown database" in str(e):
+                logger.error(f"데이터베이스 '{self.database}'가 존재하지 않습니다. 데이터베이스 생성이 필요합니다.")
+            elif "Can't connect to MySQL server" in str(e):
+                logger.error(f"MySQL 서버({self.host}:{self.port})에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.")
+                
             self.connection = None
             self.connected = False
             return False
     
 
-
     def ensure_connection(self) -> bool:
         """연결 확인 및 필요 시 재연결"""
         if not MYSQL_AVAILABLE:
             return False
-            
-        if not self.connection or not hasattr(self.connection, 'is_connected') or not self.connection.is_connected():
-            return self.connect()
-        return True
+                
+        try:
+            # 연결 객체 체크
+            if not self.connection:
+                logger.debug("DB 연결 객체가 없음, 새로 연결")
+                return self.connect()
+                    
+            # 연결 상태 체크
+            if not hasattr(self.connection, 'is_connected') or not self.connection.is_connected():
+                logger.debug("DB 연결이 끊어짐, 재연결")
+                try:
+                    # 기존 연결 닫기 시도 (필요시)
+                    if hasattr(self.connection, 'close') and callable(self.connection.close):
+                        try:
+                            self.connection.close()
+                        except:
+                            pass
+                except:
+                    pass
+                return self.connect()
+                    
+                return True
+                
+        except Exception as e:
+            logger.error(f"DB 연결 확인 오류: {str(e)}")
+        return self.connect()  # 오류 발생 시 재연결 시도
     
     
     def execute_query(self, query: str, params: Tuple = None) -> Optional[List[Tuple]]:
@@ -375,6 +408,65 @@ class DBManager:
             logger.error(f"창고 정보 조회 오류: {str(e)}")
             return []
     
+    def insert_barcode_scan(self, barcode, category, item_code=None, expiry_date=None):
+        """바코드 스캔 정보를 데이터베이스에 저장합니다."""
+        if not self.ensure_connection():
+            logger.warning(f"DB 연결 없음 - 바코드 스캔 저장 불가: {barcode}")
+            return False
+            
+        try:
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 상품 정보 조회
+            product_id = None
+            product_name = None
+            
+            # 상품 코드로 상품 정보 조회 시도
+            if item_code:
+                query = "SELECT id, name FROM product WHERE id LIKE %s"
+                result = self.execute_query(query, (f"{item_code}%",))
+                if result and len(result) > 0:
+                    product_id = result[0].get('id')
+                    product_name = result[0].get('name')
+            
+            # 바코드 스캔 정보 저장
+            query = """
+                INSERT INTO barcode_scan_logs 
+                (barcode, category, product_id, expiry_date, scan_time) 
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            
+            # 날짜 형식 확인
+            if expiry_date and not isinstance(expiry_date, datetime):
+                try:
+                    # YYYY-MM-DD 형식 확인
+                    if '-' in expiry_date:
+                        expiry_date = datetime.strptime(expiry_date, "%Y-%m-%d").date()
+                except:
+                    logger.warning(f"유통기한 형식 오류: {expiry_date}, None으로 설정")
+                    expiry_date = None
+            
+            self.execute_update(query, (barcode, category, product_id, expiry_date, current_time))
+            
+            logger.info(f"바코드 스캔 저장 성공: {barcode}, 분류: {category}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"바코드 스캔 저장 오류: {str(e)}")
+            # 대체 방법 시도
+            try:
+                # 이전 형식의 테이블에 저장 시도
+                query = """
+                    INSERT INTO sort_logs 
+                    (barcode, zone, created_at) 
+                    VALUES (%s, %s, NOW())
+                """
+                self.execute_update(query, (barcode, category))
+                logger.info(f"대체 방법으로 바코드 스캔 저장 성공: {barcode}")
+                return True
+            except:
+                return False
+
     # 온도 로그 저장 메서드 추가
     def insert_temperature_log(self, warehouse_id: str, temperature: float) -> bool:
         """온도 로그를 데이터베이스에 저장합니다."""

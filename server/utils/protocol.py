@@ -1,4 +1,4 @@
-"""
+""" 
 IOT 시스템 통신 프로토콜 정의
 
 기본 메시지 구조:
@@ -27,6 +27,7 @@ ERROR_SENSOR = 'e2'  # 센서 오류
 SORT_EVENT_IR = 'ir'        # IR 센서 (1=감지)
 SORT_EVENT_BARCODE = 'bc'   # 바코드 인식
 SORT_EVENT_SORTED = 'ss'    # 분류 완료
+SORT_EVENT_AUTO_STOP = 'as' # 자동 정지
 
 # 분류기 명령
 SORT_CMD_START = 'st'      # 시작
@@ -54,19 +55,22 @@ def create_message(device, msg_type, payload):
 # 메시지 파싱 함수
 def parse_message(message):
     """수신된 메시지 파싱"""
-    if len(message) < 2:
+    if not message or len(message) < 2:
         return None, None, None
         
+    # 줄바꿈 제거
+    message = message.strip()
+    
     device = message[0]
     msg_type = message[1]
-    payload = message[2:].strip()
+    payload = message[2:] if len(message) > 2 else ""
     
     return device, msg_type, payload
 
 # 바코드 파싱 함수
 def parse_barcode(barcode):
     """바코드 파싱: 1자리(구역) + 2자리(물품번호) + 6자리(유통기한)"""
-    if len(barcode) < 9:
+    if not barcode or len(barcode) < 9:
         return None
         
     category_code = barcode[0]
@@ -90,4 +94,4 @@ def parse_barcode(barcode):
         'category': category,
         'item_code': item_code,
         'expiry_date': expiry_date
-    } 
+    }

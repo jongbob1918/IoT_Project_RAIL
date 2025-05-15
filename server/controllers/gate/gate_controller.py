@@ -48,9 +48,30 @@ class GateController(Controller):
         self.tcp_handler.register_device_handler("gt", "evt", self.handle_event)
         self.tcp_handler.register_device_handler("gt", "res", self.handle_response)
     
-    def handle_event(self, message_data: Dict[str, Any]):
-        # RFID 이벤트는 rfid_handler로 위임
-        self.rfid_handler.handle_event(message_data)
+    def handle_event(self, message):
+        """게이트 이벤트 처리"""
+        if 'content' not in message and 'raw' not in message:
+            logger.error("이벤트 메시지에 내용이 없음")
+            return
+            
+        # raw 또는 content 키에서 메시지 가져오기
+        content = message.get('raw', message.get('content', ''))
+        
+        # 로그 추가
+        logger.debug(f"게이트 이벤트 수신: {content}")
+        
+        # 메시지 파싱
+        device_id, msg_type, payload = parse_message(content)
+        
+        # 유효성 검증
+        if not device_id or not msg_type or device_id != 'G':
+            logger.warning(f"잘못된 이벤트 메시지: {content}")
+            return
+        
+        # 이벤트 메시지가 아닌 경우 무시
+        if msg_type != 'E':
+            logger.warning(f"이벤트가 아닌 메시지: {content}")
+            return
     
     def process_event(self, content: str):
         # 필요시 추가적인 이벤트 처리 로직 구현

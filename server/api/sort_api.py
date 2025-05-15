@@ -95,33 +95,17 @@ def process_barcode():
     # 카테고리가 이미 지정된 경우
     category = data.get('category', '')
     
-    # 카테고리가 지정되지 않은 경우 바코드 첫 자리로 결정
-    if not category and len(barcode) > 0:
-        first_digit = barcode[0]
-        
-        # 바코드 첫 자리로 분류
-        if first_digit in ["1", "4", "7"]:
-            category = "A"  # 냉동 보관
-        elif first_digit in ["2", "5", "8"]:
-            category = "B"  # 냉장 보관
-        elif first_digit in ["3", "6", "9"]:
-            category = "C"  # 상온 보관
-        else:
-            category = "E"  # 오류
+    # 카테고리가 지정되지 않은 경우 바코드 파싱
+    if not category and barcode:
+        # 프로토콜 모듈 사용
+        from utils.protocol import parse_barcode
+        item_info = parse_barcode(barcode)
+        if item_info:
+            category = item_info.get('category', 'E')
     
-    # 프로토콜에 맞는 분류 명령 생성 및 전송
+    # 분류 명령 전송
     from utils.protocol import create_message, DEVICE_SORTER, MSG_COMMAND, SORT_CMD_SORT
     command = create_message(DEVICE_SORTER, MSG_COMMAND, f"{SORT_CMD_SORT}{category}")
-    
-    # 디바이스 연결 상태 확인
-    is_connected = sort_controller.tcp_handler.is_device_connected(DEVICE_SORTER)
-    if not is_connected:
-        return jsonify({
-            "success": False,
-            "barcode": barcode,
-            "category": category,
-            "message": "분류기 장치가 연결되어 있지 않습니다."
-        }), 503
     
     # 명령 전송
     success = sort_controller.tcp_handler.send_message(DEVICE_SORTER, command)
@@ -132,13 +116,5 @@ def process_barcode():
         "category": category,
         "message": f"분류 명령 전송 {'성공' if success else '실패'}"
     }
-    
-    # 로그에 바코드 정보 추가
-    if success:
-        sort_controller._add_sort_log({
-            "barcode": barcode,
-            "category": category,
-            "timestamp": time.time()
-        })
     
     return jsonify(response)

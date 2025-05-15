@@ -189,26 +189,6 @@ class SortController:
     def _handle_sort_complete(self, payload):
         """분류 완료 이벤트 처리"""
         try:
-            # 기존 코드...
-            
-            # DB에 분류 완료 로그 저장
-            if hasattr(self, 'db_helper') and self.db_helper and zone:
-                self.db_helper.update_sort_result(zone)
-                
-                # 최근 분류된 바코드가 있다면 그 정보도 함께 업데이트
-                if self.sort_logs and len(self.sort_logs) > 0:
-                    last_item = self.sort_logs[0]
-                    barcode = last_item.get("barcode")
-                    if barcode:
-                        self.db_helper.update_item_location(barcode, zone)
-            
-            # 이하 기존 코드...
-        except Exception as e:
-            logger.error(f"분류 완료 이벤트 처리 오류: {str(e)}")
-        
-    def _handle_sort_complete(self, payload):
-        """분류 완료 이벤트 처리"""
-        try:
             # 예: ss1 형식 (zone 포함)
             zone = payload[2:3] if len(payload) > 2 else None
             
@@ -462,5 +442,3 @@ class SortController:
         else:
             logger.debug("분류기가 이미 정지 상태입니다.")
             return True
-    
-    

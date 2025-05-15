@@ -3,6 +3,7 @@ from typing import Dict, Any
 from datetime import datetime
 import time
 from config import CONFIG
+from utils.protocol import create_message, parse_message, DEVICE_WAREHOUSE, MSG_COMMAND
 
 logger = logging.getLogger(__name__)
 
@@ -95,47 +96,39 @@ class EnvController:
         # 결과 그대로 반환
         return result
 
-    def process_event(self, content):
+
+    # 이벤트 처리 함수 업데이트
+    def process_event(self, message):
         """이벤트 처리 로직"""
+        if 'content' not in message and 'raw' not in message:
+            logger.error("이벤트 메시지에 내용이 없음")
+            return
+            
+        # raw 또는 content 키에서 메시지 가져오기
+        content = message.get('raw', message.get('content', ''))
+        
+        # 로그 추가
         logger.debug(f"환경 이벤트 수신: {content}")
         
-        # 원본 콘텐츠 저장
-        original_content = content
+        # 메시지 파싱
+        device_id, msg_type, payload = parse_message(content)
         
-        # 표준화된 파싱 - 프리픽스 제거 처리
-        # HE 프리픽스 제거 (있는 경우)
-        if content.startswith('HE'):
-            content = content[2:]
+        # 유효성 검증
+        if not device_id or not msg_type or device_id != 'H':
+            logger.warning(f"잘못된 이벤트 메시지: {content}")
+            return
+        
+        # 이벤트 메시지가 아닌 경우 무시
+        if msg_type != 'E':
+            logger.warning(f"이벤트가 아닌 메시지: {content}")
+            return
         
         # 이벤트 타입별 처리
-        if content.startswith('tp'):
+        if payload.startswith('tp'):
             # 온도 데이터 - 'tp-18.5;4.2;21.3'
-            temp_data = content[2:]
+            temp_data = payload[2:]
             self._process_temperature_data(temp_data)
             return True
-            
-        elif content.startswith('w') and len(content) >= 2:
-            # 경고 상태 - 'wA1', 'wB0'
-            warehouse = content[1:2]
-            status = content[2:3] == '1' if len(content) >= 3 else False
-            
-            if warehouse in ['A', 'B', 'C']:
-                self._set_warning_status(warehouse, status)
-                return True
-                
-        elif len(content) >= 2:
-            # 팬 상태 - 'AC2', 'BC2', 'CH3' 등
-            # 첫 글자가 창고 ID (A, B, C)인지 확인
-            warehouse = content[0:1]
-            if warehouse in ['A', 'B', 'C'] and len(content) >= 2:
-                # 나머지는 팬 상태 (C2, H1, 00 등)
-                fan_status = content[1:]
-                self._set_fan_status(warehouse, fan_status)
-                return True
-        
-        # 이 외의 경우 로그로 기록
-        logger.debug(f"처리되지 않은 이벤트: {original_content}")
-        return False
         
     def process_command(self, message_data):
         """명령 메시지 처리 - 'C' 타입 메시지"""
