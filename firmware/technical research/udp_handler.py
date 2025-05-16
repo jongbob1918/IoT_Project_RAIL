@@ -5,6 +5,7 @@ import numpy as np
 # === UDP 수신 설정 ===
 # UDP_IP = "0.0.0.0"
 UDP_IP = "192.168.2.198"
+# UDP_IP = "192.168.0.198"
 # UDP_IP = "192.168.200.113"
 UDP_PORT = 8888
 PACKET_SIZE = 1024
@@ -12,6 +13,7 @@ PACKET_SIZE = 1024
 # === TCP 서버 설정 (ESP32가 클라이언트로 연결)
 # SERVER_IP = "0.0.0.0"
 SERVER_IP = "192.168.2.198"
+# SERVER_IP = "192.168.0.198"
 # SERVER_IP = "192.168.200.113"
 SERVER_PORT = 9100
 
@@ -178,3 +180,4 @@ udp_sock.close()
 server_sock.close()
 cv2.destroyAllWindows()
 print("[🛑] 프로그램 종료")
+
