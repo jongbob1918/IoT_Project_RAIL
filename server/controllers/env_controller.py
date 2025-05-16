@@ -31,84 +31,78 @@ class EnvController:
         # 창고별 상태 데이터
         self.warehouse_data = {}
         for wh in self.warehouses:
-            # CONFIG에서 창고 정보를 가져오되, 기본값 설정
+            # CONFIG에서 가져온 설정 (DB에서 이미 로드됨)
             warehouse_config = CONFIG.get("WAREHOUSES", {}).get(wh, {})
             
-            # 기본값을 사용하여 온도 범위 설정
-            if wh == 'A':  # 냉동
-                temp_min = warehouse_config.get("temp_min", -25)
-                temp_max = warehouse_config.get("max_temp", -15)
-            elif wh == 'B':  # 냉장
-                temp_min = warehouse_config.get("temp_min", 0)
-                temp_max = warehouse_config.get("max_temp", 10)
-            else:  # C, 상온
-                temp_min = warehouse_config.get("temp_min", 15)
-                temp_max = warehouse_config.get("max_temp", 25)
+            # 기본값 또는 CONFIG에서 가져온 값 사용
+            temp_min = warehouse_config.get("temp_min")
+            temp_max = warehouse_config.get("temp_max")
+            target_temp = warehouse_config.get("target_temp")
             
+            # 누락된 값에 대한 기본값 설정
+            if temp_min is None or temp_max is None:
+                # 기본 범위 설정
+                if wh == 'A':  # 냉동
+                    temp_min = temp_min or -30
+                    temp_max = temp_max or -18
+                elif wh == 'B':  # 냉장
+                    temp_min = temp_min or 0
+                    temp_max = temp_max or 10
+                else:  # C, 상온
+                    temp_min = temp_min or 15
+                    temp_max = temp_max or 25
+            
+            # 목표 온도가 설정되지 않았으면 범위 중간값 사용
+            if target_temp is None:
+                target_temp = (temp_min + temp_max) / 2
+            
+            # 상태 데이터 설정
             self.warehouse_data[wh] = {
                 "temp": None,
-                "target_temp": (temp_min + temp_max) / 2,
+                "target_temp": target_temp,
                 "temp_range": (temp_min, temp_max),
                 "state": self.NORMAL,
                 "fan_mode": self.FAN_OFF,
                 "fan_speed": 0,
                 "warning": False
             }
-        
-        # 이벤트 핸들러 등록 - 새로운 방식과 이전 방식 모두 지원
-        # 원본 프로토콜 형식으로 등록 (E, C, R, X)
-        tcp_handler.register_device_handler('H', 'E', self.process_event)
-        tcp_handler.register_device_handler('H', 'C', self.process_command)
-        tcp_handler.register_device_handler('H', 'R', self.process_response)
-        tcp_handler.register_device_handler('H', 'X', self.process_error)
-        
-        # 매핑된 디바이스 ID로도 등록 (이중 등록)
-        tcp_handler.register_device_handler('env_controller', 'E', self.process_event)
-        tcp_handler.register_device_handler('env_controller', 'C', self.process_command)
-        tcp_handler.register_device_handler('env_controller', 'R', self.process_response)
-        tcp_handler.register_device_handler('env_controller', 'X', self.process_error)
-        
-        # 이전 방식 호환성 유지 (deprecated)
-        tcp_handler.register_device_handler('env_controller', 'evt', self.process_event)
-        tcp_handler.register_device_handler('env_controller', 'res', self.process_response)
-        tcp_handler.register_device_handler('env_controller', 'err', self.process_error)
-        
-    def set_temperature(self, warehouse, temperature):
-        """특정 창고의 온도를 설정합니다.
-        
-        Args:
-            warehouse: 창고 ID (A, B, C)
-            temperature: 설정할 온도 값 (정수)
-            
-        Returns:
-            dict: 성공/실패 상태와 메시지를 포함한 응답
-        """
-        # 창고 존재 확인
+    
+    def set_target_temperature(self, warehouse, temperature):
+        """목표 온도 설정"""
         if warehouse not in self.warehouse_data:
-            logger.error(f"존재하지 않는 창고: {warehouse}")
-            return {"status": "error", "message": f"존재하지 않는 창고: {warehouse}"}
-            
-        # 온도 값을 정수로 변환 (API는 정수로 받음)
-        try:
-            temperature = int(temperature)
-        except (ValueError, TypeError):
-            logger.error(f"온도를 정수로 변환할 수 없음: {temperature}")
-            return {"status": "error", "message": f"온도를 정수로 변환할 수 없음: {temperature}"}
-            
+            return {
+                "status": "error",
+                "message": f"존재하지 않는 창고: {warehouse}"
+            }
+        
         # 유효 범위 확인
         min_temp, max_temp = self.warehouse_data[warehouse]["temp_range"]
         if temperature < min_temp or temperature > max_temp:
-            logger.error(f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다.")
-            return {"status": "error", "message": f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다."}
+            return {
+                "status": "error",
+                "message": f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다."
+            }
         
-        # set_target_temperature 메서드 호출
-        result = self.set_target_temperature(warehouse, temperature)
+        # 명령 전송 (정수로 변환)
+        value = int(temperature)
+        command = f"HCp{warehouse}{value}\n"
         
-        # 결과 그대로 반환
-        return result
+        if not self.tcp_handler.send_message("H", command):
+            return {"status": "error", "message": "환경 제어 통신 오류"}
+        
+        # 내부 상태 업데이트
+        self.warehouse_data[warehouse]["target_temp"] = temperature
+        
+        # DB에 저장
+        if self.db_helper and hasattr(self.db_helper, 'update_target_temperature'):
+            self.db_helper.update_target_temperature(warehouse, temperature)
+        
+        return {
+            "status": "ok",
+            "message": f"{warehouse} 창고 목표 온도를 {temperature}도로 설정했습니다."
+        }
 
-
-    # 이벤트 처리 함수 업데이트
+    # 이벤트 처리 함수
     def process_event(self, message):
         """이벤트 처리 로직"""
         if 'content' not in message and 'raw' not in message:
@@ -145,7 +139,38 @@ class EnvController:
             temp_data = payload[2:]
             self._process_temperature_data(temp_data)
             return True
+        elif payload.startswith('wA'):
+            # A 창고 경고 - 'wA1' (1=경고, 0=정상)
+            warning_status = payload[2:] == '1'
+            self._set_warning_status('A', warning_status)
+            return True
+        elif payload.startswith('wB'):
+            # B 창고 경고
+            warning_status = payload[2:] == '1'
+            self._set_warning_status('B', warning_status)
+            return True
+        elif payload.startswith('wC'):
+            # C 창고 경고
+            warning_status = payload[2:] == '1'
+            self._set_warning_status('C', warning_status)
+            return True
+        elif payload.startswith('A'):
+            # A 창고 온도제어상태 - 'AC2' (C=냉방, H=난방, 0-3=속도)
+            self._set_fan_status('A', payload[1:])
+            return True
+        elif payload.startswith('B'):
+            # B 창고 온도제어상태
+            self._set_fan_status('B', payload[1:])
+            return True
+        elif payload.startswith('C'):
+            # C 창고 온도제어상태
+            self._set_fan_status('C', payload[1:])
+            return True
         
+        # 처리되지 않은 이벤트
+        logger.warning(f"처리되지 않은 환경 이벤트: {payload}")
+        return False
+    
     def process_command(self, message_data):
         """명령 메시지 처리 - 'C' 타입 메시지"""
         if 'content' not in message_data:
@@ -161,6 +186,30 @@ class EnvController:
         if content.startswith('HC'):
             content = content[2:]
         
+        # 명령 유형 파싱
+        if content.startswith('p'):
+            # 목표 온도 설정
+            warehouse_id = content[1:2]  # 'pA-20' -> 'A'
+            temp_str = content[2:]       # 'pA-20' -> '-20'
+            
+            try:
+                temp = float(temp_str)
+                logger.info(f"목표 온도 설정 명령: 창고 {warehouse_id}, 온도 {temp}°C")
+                
+                # 내부 상태 업데이트
+                if warehouse_id in self.warehouse_data:
+                    self.warehouse_data[warehouse_id]["target_temp"] = temp
+                    
+                    # DB에 저장
+                    if self.db_helper and hasattr(self.db_helper, 'update_target_temperature'):
+                        self.db_helper.update_target_temperature(warehouse_id, temp)
+                
+                # 응답은 하드웨어가 보낼 것임
+                return True
+            except ValueError:
+                logger.error(f"잘못된 온도 값: {temp_str}")
+        
+        return False
     
     def process_response(self, message_data):
         """응답 메시지 처리 - 'R' 타입 메시지"""
@@ -214,7 +263,7 @@ class EnvController:
                         
                         # 경고 상태일 때 DB 로깅
                         if self.db_helper and self.warehouse_data[warehouse]["warning"]:
-                            self.db_helper.insert_temperature_log(warehouse, temp)
+                            self.db_helper.log_temperature_warning(warehouse, temp, "warning")
                         
                         # 소켓 이벤트 발송
                         self._emit_event("temperature_update", {
@@ -243,7 +292,7 @@ class EnvController:
         if warning_status and self.db_helper:
             current_temp = self.warehouse_data[warehouse]["temp"]
             if current_temp is not None:
-                self.db_helper.insert_temperature_log(warehouse, current_temp)
+                self.db_helper.log_temperature_warning(warehouse, current_temp, "warning")
                 logger.info(f"창고 {warehouse} 경고 상태 온도 로깅: {current_temp}°C")
         
         # 이벤트 발송
@@ -306,37 +355,6 @@ class EnvController:
         except Exception as e:
             logger.error(f"팬 상태 처리 오류: {str(e)}")
     
-    def set_target_temperature(self, warehouse, temperature):
-        """목표 온도 설정"""
-        if warehouse not in self.warehouse_data:
-            return {
-                "status": "error",
-                "message": f"존재하지 않는 창고: {warehouse}"
-            }
-        
-        # 유효 범위 확인
-        min_temp, max_temp = self.warehouse_data[warehouse]["temp_range"]
-        if temperature < min_temp or temperature > max_temp:
-            return {
-                "status": "error",
-                "message": f"유효하지 않은 온도: {temperature}. 범위는 {min_temp}~{max_temp}입니다."
-            }
-        
-        # 명령 전송 (정수로 변환)
-        value = int(temperature)
-        command = f"HCp{warehouse}{value}\n"
-        
-        if not self.tcp_handler.send_message("H", command):
-            return {"status": "error", "message": "환경 제어 통신 오류"}
-        
-        # 내부 상태 업데이트
-        self.warehouse_data[warehouse]["target_temp"] = temperature
-        
-        return {
-            "status": "ok",
-            "message": f"{warehouse} 창고 목표 온도를 {temperature}도로 설정했습니다."
-        }
-    
     def get_status(self):
         """모든 창고의 상태 반환"""
         warehouses = {}
@@ -394,3 +412,23 @@ class EnvController:
             self.socketio.emit("event", event_data, namespace="/ws")
         except Exception as e:
             logger.error(f"이벤트 발송 오류: {str(e)}")
+            
+    def get_warnings(self):
+        """현재 경고 상태인 창고 목록 반환"""
+        warnings = []
+        
+        for warehouse_id, data in self.warehouse_data.items():
+            if data["warning"]:
+                warnings.append({
+                    "warehouse_id": warehouse_id,
+                    "temperature": data["temp"],
+                    "target_temp": data["target_temp"],
+                    "temp_range": data["temp_range"]
+                })
+                
+        return warnings
+    
+    def set_temperature(self, warehouse, temperature):
+        """목표 온도 설정 (API용 간소화된 메서드)"""
+        result = self.set_target_temperature(warehouse, temperature)
+        return result["status"] == "ok"
