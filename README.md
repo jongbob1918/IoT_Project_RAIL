@@ -3,7 +3,7 @@
 ## 00. 팀 소개
 ### 주제 : 물류 자동화 시스템 
 ### 팀명 : RAIL
-![로고](https://private-user-images.githubusercontent.com/204112513/444458501-f9a69a0a-8d62-48b3-8993-17f76e9e8af3.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDczODY2MTcsIm5iZiI6MTc0NzM4NjMxNywicGF0aCI6Ii8yMDQxMTI1MTMvNDQ0NDU4NTAxLWY5YTY5YTBhLThkNjItNDhiMy04OTkzLTE3Zjc2ZTllOGFmMy5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUwNTE2JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MDUxNlQwOTA1MTdaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT04YzQ4YzRiYjg0OWJlNWJmZTNhZjExM2E1YTYyYzg2NmFjYTI1OTE1ZDJjYmU4YzFiNzdkNGEzOGFjODkzMjljJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.aTQ0p4rrLsMZMkwqT9heYN8cBbI6vlsxza8Tnvirszo)
+![로고](https://private-user-images.githubusercontent.com/204112513/444460369-8f8feda1-c146-4f99-8d42-3796149e6753.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDczODY5NDYsIm5iZiI6MTc0NzM4NjY0NiwicGF0aCI6Ii8yMDQxMTI1MTMvNDQ0NDYwMzY5LThmOGZlZGExLWMxNDYtNGY5OS04ZDQyLTM3OTYxNDllNjc1My5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUwNTE2JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MDUxNlQwOTEwNDZaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT0wYjI3NWU2YWNkMGIyMDczZTQ0NDY1NWRmYmE3MjQ1YTVlMTVkZDkwODYzZWJjYTM3OGZhZmZjYmZmNjk0ZjZkJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.W4357atx5CHBYHISam8DWBadnVB8jePjl9Kgu45B_Vs)
 
 **R**apid **A**utomated **I**ntegrated **L**ogistics <br/>
 빠르고 자동화된 통합 물류관리 시스템
@@ -64,7 +64,36 @@
 
 ## 02. 프로젝트 설계
 ### 기술 리스트 (System Requirements)
-기술 리스트에 대해서 설명해주세요.
+| SR_ID | Category | Name | Description | Priority |
+|-------|----------|------|-------------|----------|
+| SR_01 | 분류 | 분류장치 원격 제어 기능 | 입고하는 물품들을 분류하는 장치를 원격으로 작동/정지함.<br>분류할 물품이 없을 때 일정 시간 경과 시 자동 종료됨. | R |
+| SR_02 | 분류 | 물품 분류 기능 | 입고된 물품을 다음 기준에 따라 분류하고 해당 창고로 이동:<br>냉동, 냉장, 상온, 비식품, 오류물품(분류되지 않은 물품) | R |
+| SR_03 | 분류 | 물품 정보 인식 기능 | 물품의 분류 정보, 판매자, 보관 온도, 유통기한을 인식 후 저장 | R |
+| SR_04 | 분류 | 분류대 물품 개수 확인 기능 | 분류 위치별로 분류된 물품 개수를 집계하여 확인 | R |
+| SR_05 | 분류 | 분류중 정지 방지 기능 | 입고 종료 시 분류중인 물품이 있으면 알림 표시되며 작동 유지<br>입고/분류중인 물품 없을 경우 종료 | R |
+| SR_06 | 분류 | 비상 정지 기능 | 입고 중 비상 정지 버튼 누르면 컨베이어/분류기 즉시 정지<br>입고 수량 남아있어도 강제 정지 가능 | O |
+| SR_07 | 분류 | 입고 상태 실시간 모니터링 기능 | 입고 시작/종료/알림 상태를 모니터에 실시간 반영 | R |
+| SR_09 | 환경관리 | 보관창고 모니터링 기능 | 보관창고의 물품 리스트, 창고별 온도, 선반별 상태 모니터링 | R |
+| SR_10 | 환경관리 | 온도 제어 기능 | 창고별 온도 기준 설정 및 자동 냉방/난방 장치 작동 | R |
+| SR_11 | 환경관리 | 온도 실시간 모니터링 기능 | 보관창고 온도 원격 실시간 모니터링 | R |
+| SR_12 | 환경관리 | 온도 이상 감지 및 알림 기능 | 온도가 설정값을 벗어나면 경고 및 알림 작동<br>설정값 범위로 복귀 시 경고 해제 | R |
+| SR_13 | 입출입관리 | 출입증 확인 기능 | 등록된 출입증인지 확인<br>미등록 출입증이 3회 인식되면 경고 알림 발생 | O |
+| SR_14 | 입출입관리 | 출입문 제어 기능 | 출입증의 허가 여부에 따라 출입문 자동 제어 | O |
+| SR_15 | 입출입관리 | 출입 기록 관리 기능 | 출입 기록 저장 및 열람 기능 제공 | O |
+| SR_16 | 재고관리 | 물품 입출고 실시간 확인 기능 | 물품의 입고량 및 출고량 실시간 확인 | R |
+| SR_17 | 재고관리 | 유통기한 관리 기능 | 물품 유통기한 확인 및 경과 시 관리자 알림 전송 | O |
+| SR_18 | 재고관리 | 유통기한 경과 물품 처리 기능 | 유통기한 경과 물품에 대한 알림 및 처리 | O |
+| SR_19 | 재고관리 | 창고 재고량 표시 기능 | 창고의 현재 적재량 실시간 모니터링 | R |
+| SR_20 | 재고관리 | 창고 선반 위치 지정 기능 | 창고 내 빈 선반 위치 자동 확인 후 지정 | R |
+
+![System Requirements](https://private-user-images.githubusercontent.com/204112513/444462541-74ba4a5a-1550-420f-b804-ef82591d6623.jpg?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDczODczMTUsIm5iZiI6MTc0NzM4NzAxNSwicGF0aCI6Ii8yMDQxMTI1MTMvNDQ0NDYyNTQxLTc0YmE0YTVhLTE1NTAtNDIwZi1iODA0LWVmODI1OTFkNjYyMy5qcGc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUwNTE2JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MDUxNlQwOTE2NTVaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT05MTRjNjA1NTQ0ODMwYWMzNGVhZDJjMjliNjdkYmZiMmUyZjk2NjZkM2UyZjNmNzU4YjhiZWYzNzJmYjc4YzI1JlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.NmTSHJkAV3JFTHKJPBw0NyiwqYCiALW3RnmdpawK1rM)
+
+기능 리스트를 요약하면 크게 3가지로 나눌 수 있습니다. <br/>
+물품의 분류를 담당하는 분류 기능(**컨베이어 벨트**) <br/>
+물품의 재고 보관과, 온도 등의 환경을 담당하는 재고 환경 관리 기능(**창고**) <br/>
+직원의 출입을 담당하는 출입 관리 기능(**보안**) <br/>
+추가적으로 위 3가지 기능을 모니터링하고 제어하는 **GUI** 가 있겠습니다.
+
 
 ### SW 아키텍쳐 (Software Architecture)
 SW 아키텍쳐에 대해서 설명해주세요.
