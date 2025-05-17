@@ -105,6 +105,33 @@ def set_temperature():
         
     return jsonify(result)
 
+@bp.route('/thresholds', methods=['GET'])
+def get_temperature_thresholds():
+    """모든 창고의 온도 임계값 조회"""
+    env_controller = get_env_controller()
+    if not env_controller:
+        return jsonify({
+            "status": "error", 
+            "message": "환경 컨트롤러가 초기화되지 않았습니다."
+        }), 500
+    
+    # 환경 컨트롤러에서 온도 임계값 가져오기
+    thresholds = {}
+    for wh_id, data in env_controller.warehouse_data.items():
+        temp_min, temp_max = data.get("temp_range", (None, None))
+        if temp_min is not None and temp_max is not None:
+            thresholds[wh_id] = {
+                "min": temp_min,
+                "max": temp_max,
+                "type": data.get("type", "unknown"),
+                "target_temp": data.get("target_temp")
+            }
+    
+    return jsonify({
+        "status": "ok",
+        "data": thresholds
+    })
+
 # ==== 온도 경고 조회 ====
 @bp.route('/warnings', methods=['GET'])
 def get_temperature_warnings():

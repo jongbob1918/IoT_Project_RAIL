@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple, Union
 from datetime import datetime
 import time
 from config import CONFIG
@@ -19,56 +19,57 @@ class EnvController:
     FAN_COOLING = "cool"
     FAN_HEATING = "heat"
     
-    def __init__(self, tcp_handler, socketio=None, db_helper=None):
-        """컨트롤러 초기화"""
+    def __init__(self, tcp_handler, socketio=None, db_helper=None, warning_log_repo=None):
+        """컨트롤러 초기화
+        
+        Args:
+            tcp_handler: TCP 통신 핸들러
+            socketio: Socket.IO 객체 (실시간 이벤트용)
+            db_helper: DB 관리자 (온도 설정 저장용)
+            warning_log_repo: 경고 로그 리포지토리 (온도 경고 로깅용)
+        """
         self.tcp_handler = tcp_handler
         self.socketio = socketio
         self.db_helper = db_helper
+        self.warning_log_repo = warning_log_repo
         
         # 창고 설정 초기화
         self.warehouses = list(CONFIG["WAREHOUSES"].keys())
         
-        # 창고별 상태 데이터
+        # 창고별 상태 데이터 기본값 설정
         self.warehouse_data = {}
         for wh in self.warehouses:
-            # CONFIG에서 가져온 설정 (DB에서 이미 로드됨)
-            warehouse_config = CONFIG.get("WAREHOUSES", {}).get(wh, {})
-            
-            # 기본값 또는 CONFIG에서 가져온 값 사용
-            temp_min = warehouse_config.get("temp_min")
-            temp_max = warehouse_config.get("temp_max")
-            target_temp = warehouse_config.get("target_temp")
-            
-            # 누락된 값에 대한 기본값 설정
-            if temp_min is None or temp_max is None:
-                # 기본 범위 설정
-                if wh == 'A':  # 냉동
-                    temp_min = temp_min or -30
-                    temp_max = temp_max or -18
-                elif wh == 'B':  # 냉장
-                    temp_min = temp_min or 0
-                    temp_max = temp_max or 10
-                else:  # C, 상온
-                    temp_min = temp_min or 15
-                    temp_max = temp_max or 25
-            
-            # 목표 온도가 설정되지 않았으면 범위 중간값 사용
-            if target_temp is None:
-                target_temp = (temp_min + temp_max) / 2
-            
-            # 상태 데이터 설정
+            # 기본값 설정
             self.warehouse_data[wh] = {
                 "temp": None,
-                "target_temp": target_temp,
-                "temp_range": (temp_min, temp_max),
+                "target_temp": None,
+                "temp_range": (None, None),
                 "state": self.NORMAL,
                 "fan_mode": self.FAN_OFF,
                 "fan_speed": 0,
-                "warning": False
+                "warning": False,
+                "type": None
             }
     
-    def set_target_temperature(self, warehouse, temperature):
-        """목표 온도 설정"""
+    # DB에서 설정 로드 (기본값 업데이트)
+    self._load_warehouse_settings()
+
+    
+    def set_target_temperature(self, warehouse: str, temperature: float) -> Dict[str, Any]:
+        """목표 온도 설정
+        
+        Args:
+            warehouse: 창고 ID ('A', 'B', 'C')
+            temperature: 설정할 온도
+            
+        Returns:
+            Dict: 결과 정보가 포함된 딕셔너리
+                {
+                    "status": "ok" | "error",
+                    "message": "성공/오류 메시지",
+                    "data": {...}  # 선택적 추가 데이터
+                }
+        """
         if warehouse not in self.warehouse_data:
             return {
                 "status": "error",
@@ -94,20 +95,93 @@ class EnvController:
         self.warehouse_data[warehouse]["target_temp"] = temperature
         
         # DB에 저장
-        if self.db_helper and hasattr(self.db_helper, 'update_target_temperature'):
-            self.db_helper.update_target_temperature(warehouse, temperature)
+        self._save_temperature_to_db(warehouse, temperature)
         
         return {
             "status": "ok",
-            "message": f"{warehouse} 창고 목표 온도를 {temperature}도로 설정했습니다."
+            "message": f"{warehouse} 창고 목표 온도를 {temperature}도로 설정했습니다.",
+            "data": {
+                "warehouse": warehouse,
+                "temperature": temperature,
+                "timestamp": datetime.now().isoformat()
+            }
         }
+    
+    def _load_warehouse_settings(self):
+        """DB에서 창고 설정 로드 또는 CONFIG 사용"""
+        try:
+            # DB에서 설정 가져오기 시도
+            if self.db_helper and hasattr(self.db_helper, 'get_warehouse_temp_settings'):
+                settings = self.db_helper.get_warehouse_temp_settings()
+                if settings:
+                    # 설정 적용
+                    for wh_id, setting in settings.items():
+                        if wh_id in self.warehouse_data:
+                            temp_min = setting.get("temp_min")
+                            temp_max = setting.get("temp_max")
+                            target_temp = setting.get("target_temp") or setting.get("default_target")
+                            wh_type = setting.get("type")
+                            
+                            self.warehouse_data[wh_id]["temp_range"] = (temp_min, temp_max)
+                            self.warehouse_data[wh_id]["target_temp"] = target_temp
+                            self.warehouse_data[wh_id]["type"] = wh_type
+                            
+                    logger.info("DB에서 창고 설정 로드 완료")
+                    return True
+            
+            # DB 로드 실패 시 CONFIG 사용
+            if 'CONFIG' in globals() and 'WAREHOUSES' in CONFIG:
+                warehouses = CONFIG['WAREHOUSES']
+                for wh_id, setting in warehouses.items():
+                    if wh_id in self.warehouse_data:
+                        temp_min = setting.get("temp_min")
+                        temp_max = setting.get("temp_max")
+                        target_temp = setting.get("default_target") or setting.get("target_temp")
+                        wh_type = setting.get("type")
+                        
+                        self.warehouse_data[wh_id]["temp_range"] = (temp_min, temp_max)
+                        self.warehouse_data[wh_id]["target_temp"] = target_temp
+                        self.warehouse_data[wh_id]["type"] = wh_type
+                
+                logger.info("CONFIG에서 창고 설정 로드 완료")
+                return True
+        except Exception as e:
+            logger.error(f"창고 설정 로드 오류: {str(e)}")
+        
+        # 모든 시도 실패 시 기본값 사용
+        self._set_default_warehouse_settings()
+        return False
+    
+    def _save_temperature_to_db(self, warehouse: str, temperature: float) -> bool:
+        """DB에 온도 설정 저장 (내부 메서드)
+        
+        여러 종류의 DB 도우미(db_helper)를 지원하기 위한 래퍼 메서드
+        """
+        if not self.db_helper:
+            logger.warning("DB 도우미가 설정되지 않아 온도 설정을 저장할 수 없습니다.")
+            return False
+            
+        # DBManager 클래스를 사용하는 경우
+        if hasattr(self.db_helper, 'update_target_temperature'):
+            return self.db_helper.update_target_temperature(warehouse, temperature)
+        
+        # WarehouseRepository를 직접 사용하는 경우
+        elif hasattr(self.db_helper, 'save_target_temperature'):
+            return self.db_helper.save_target_temperature(warehouse, temperature)
+            
+        # WarehouseRepository를 속성으로 가진 객체인 경우
+        elif hasattr(self.db_helper, 'warehouse_repo'):
+            return self.db_helper.warehouse_repo.save_target_temperature(warehouse, temperature)
+            
+        logger.warning("적절한 온도 저장 메서드를 찾을 수 없습니다.")
+        return False
 
     # 이벤트 처리 함수
-    def process_event(self, message):
+    def process_event(self, message: Dict[str, Any]) -> bool:
         """이벤트 처리 로직"""
         if 'content' not in message and 'raw' not in message:
             logger.error("이벤트 메시지에 내용이 없음")
-            return
+            return False
                 
         # raw 또는 content 키에서 메시지 가져오기
         content = message.get('raw', message.get('content', ''))
@@ -126,12 +200,12 @@ class EnvController:
         # 유효성 검증
         if not device_id or not msg_type or device_id != 'H':
             logger.warning(f"잘못된 이벤트 메시지: {content}")
-            return
+            return False
         
         # 이벤트 메시지가 아닌 경우 무시
         if msg_type != 'E':
             logger.warning(f"이벤트가 아닌 메시지: {content}")
-            return
+            return False
         
         # 이벤트 타입별 처리
         if payload.startswith('tp'):
@@ -171,10 +245,10 @@ class EnvController:
         logger.warning(f"처리되지 않은 환경 이벤트: {payload}")
         return False
     
-    def process_command(self, message_data):
+    def process_command(self, message_data: Dict[str, Any]) -> bool:
         """명령 메시지 처리 - 'C' 타입 메시지"""
         if 'content' not in message_data:
-            return
+            return False
             
         content = message_data['content']
         logger.debug(f"환경 제어 명령 수신: {content}")
@@ -201,8 +275,7 @@ class EnvController:
                     self.warehouse_data[warehouse_id]["target_temp"] = temp
                     
                     # DB에 저장
-                    if self.db_helper and hasattr(self.db_helper, 'update_target_temperature'):
-                        self.db_helper.update_target_temperature(warehouse_id, temp)
+                    self._save_temperature_to_db(warehouse_id, temp)
                 
                 # 응답은 하드웨어가 보낼 것임
                 return True
@@ -211,7 +284,7 @@ class EnvController:
         
         return False
     
-    def process_response(self, message_data):
+    def process_response(self, message_data: Dict[str, Any]) -> bool:
         """응답 메시지 처리 - 'R' 타입 메시지"""
         if 'content' in message_data:
             content = message_data['content']
@@ -219,7 +292,7 @@ class EnvController:
             return True
         return False
     
-    def process_error(self, message_data):
+    def process_error(self, message_data: Dict[str, Any]) -> bool:
         """오류 메시지 처리 - 'X' 타입 메시지"""
         if 'content' in message_data:
             content = message_data['content']
@@ -238,7 +311,7 @@ class EnvController:
             return True
         return False
     
-    def _process_temperature_data(self, temp_data):
+    def _process_temperature_data(self, temp_data: str) -> None:
         """온도 데이터 처리"""
         if not temp_data:
             return
@@ -262,8 +335,8 @@ class EnvController:
                         self.warehouse_data[warehouse]["temp"] = temp
                         
                         # 경고 상태일 때 DB 로깅
-                        if self.db_helper and self.warehouse_data[warehouse]["warning"]:
-                            self.db_helper.log_temperature_warning(warehouse, temp, "warning")
+                        if self.warehouse_data[warehouse]["warning"]:
+                            self._log_temperature_warning(warehouse, temp, "warning")
                         
                         # 소켓 이벤트 발송
                         self._emit_event("temperature_update", {
@@ -276,7 +349,27 @@ class EnvController:
         except Exception as e:
             logger.error(f"온도 데이터 처리 오류: {str(e)}")
     
-    def _set_warning_status(self, warehouse, warning_status):
+    def _log_temperature_warning(self, warehouse: str, temperature: float, status: str) -> bool:
+        """온도 경고 로그 저장 (내부 메서드)
+        
+        여러 종류의 로깅 객체를 지원하기 위한 래퍼 메서드
+        """
+        # 경고 로그 리포지토리가 직접 전달된 경우
+        if self.warning_log_repo:
+            return self.warning_log_repo.log_temperature_warning(warehouse, temperature, status)
+            
+        # db_helper에 log_temperature_warning 메서드가 있는 경우
+        if self.db_helper and hasattr(self.db_helper, 'log_temperature_warning'):
+            return self.db_helper.log_temperature_warning(warehouse, temperature, status)
+            
+        # db_helper가 warning_log_repo 속성을 가진 경우 (DBManager)
+        if self.db_helper and hasattr(self.db_helper, 'warning_log_repo'):
+            return self.db_helper.warning_log_repo.log_temperature_warning(warehouse, temperature, status)
+            
+        logger.warning(f"온도 경고 로그를 저장할 적절한 메서드를 찾을 수 없습니다. (창고: {warehouse})")
+        return False
+        
+    def _set_warning_status(self, warehouse: str, warning_status: bool) -> None:
         """경고 상태 설정"""
         logger.debug(f"경고 상태 설정: 창고 {warehouse}, 상태 {warning_status}")
         
@@ -289,10 +382,10 @@ class EnvController:
         self.warehouse_data[warehouse]["state"] = self.WARNING if warning_status else self.NORMAL
         
         # 경고 시 DB 기록
-        if warning_status and self.db_helper:
+        if warning_status:
             current_temp = self.warehouse_data[warehouse]["temp"]
             if current_temp is not None:
-                self.db_helper.log_temperature_warning(warehouse, current_temp, "warning")
+                self._log_temperature_warning(warehouse, current_temp, "warning")
                 logger.info(f"창고 {warehouse} 경고 상태 온도 로깅: {current_temp}°C")
         
         # 이벤트 발송
@@ -302,7 +395,7 @@ class EnvController:
         })
         logger.info(f"창고 {warehouse} 경고 상태 변경: {warning_status}")
     
-    def _set_fan_status(self, warehouse, status_str):
+    def _set_fan_status(self, warehouse: str, status_str: str) -> None:
         """팬 상태 설정"""
         if warehouse not in self.warehouse_data or not status_str:
             return
@@ -355,7 +448,7 @@ class EnvController:
         except Exception as e:
             logger.error(f"팬 상태 처리 오류: {str(e)}")
     
-    def get_status(self):
+    def get_status(self) -> Dict[str, Any]:
         """모든 창고의 상태 반환"""
         warehouses = {}
         
@@ -377,7 +470,7 @@ class EnvController:
             }
         }
     
-    def get_warehouse_status(self, warehouse):
+    def get_warehouse_status(self, warehouse: str) -> Dict[str, Any]:
         """특정 창고의 상태 반환"""
         if warehouse not in self.warehouse_data:
             return {"status": "error", "message": f"알 수 없는 창고: {warehouse}"}
@@ -395,7 +488,7 @@ class EnvController:
             "timestamp": datetime.now().isoformat()
         }
     
-    def _emit_event(self, event_name, data):
+    def _emit_event(self, event_name: str, data: Dict[str, Any]) -> None:
         """소켓 이벤트 발송"""
         if not self.socketio:
             return
@@ -413,7 +506,7 @@ class EnvController:
         except Exception as e:
             logger.error(f"이벤트 발송 오류: {str(e)}")
             
-    def get_warnings(self):
+    def get_warnings(self) -> List[Dict[str, Any]]:
         """현재 경고 상태인 창고 목록 반환"""
         warnings = []
         
@@ -427,8 +520,3 @@ class EnvController:
                 })
                 
         return warnings
-    
-    def set_temperature(self, warehouse, temperature):
-        """목표 온도 설정 (API용 간소화된 메서드)"""
-        result = self.set_target_temperature(warehouse, temperature)
-        return result["status"] == "ok"

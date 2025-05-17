@@ -728,6 +728,42 @@ class ServerConnection(QObject):
         
         return results
 
+    def get_temperature_thresholds(self):
+        """창고별 온도 임계값 정보 조회"""
+        response = self._send_request('GET', 'environment/thresholds')
+        standardized = self._standardize_response(response, "온도 임계값 조회")
+        
+        # 값이 없거나 오류인 경우 기본값 반환
+        if not standardized.get("success", False) or "data" not in standardized:
+            # 기본값 설정
+            default_thresholds = {
+                'A': {'min': -30, 'max': -18, 'type': 'freezer'},
+                'B': {'min': 0, 'max': 10, 'type': 'refrigerator'},
+                'C': {'min': 15, 'max': 25, 'type': 'room_temp'}
+            }
+            logger.warning("온도 임계값 조회 실패, 기본값 사용")
+            return default_thresholds
+        
+        return standardized.get("data", {})
+
+    def get_temperature_thresholds(self):
+        """창고별 온도 임계값 정보 조회"""
+        response = self._send_request('GET', 'environment/thresholds')
+        standardized = self._standardize_response(response, "온도 임계값 조회")
+        
+        # 값이 없거나 오류인 경우 기본값 반환
+        if not standardized.get("success", False) or "data" not in standardized:
+            # 기본값 설정
+            default_thresholds = {
+                'A': {'min': -30, 'max': -18, 'type': 'freezer'},
+                'B': {'min': 0, 'max': 10, 'type': 'refrigerator'},
+                'C': {'min': 15, 'max': 25, 'type': 'room_temp'}
+            }
+            logger.warning("온도 임계값 조회 실패, 기본값 사용")
+            return default_thresholds
+        
+        return standardized.get("data", {})
+
     # sort 관련 API 호출 메서드에 상세 로깅 추가
     def get_sorter_status(self):
         """분류기 상태 조회"""

@@ -45,22 +45,20 @@ class DataManager(QObject):
         return cls._instance
     
     def __init__(self):
-        """초기화 - 싱글톤이므로 한 번만 호출됨"""
-        super().__init__()
+        """초기화 (싱글톤이므로 한 번만 실행)"""
+        if hasattr(self, '_initialized') and self._initialized:
+            return
         
-        # 이미 초기화되었는지 확인
-        if DataManager._instance is not None:
-            raise RuntimeError("이 클래스는 싱글톤입니다. get_instance() 메서드를 사용하세요.")
-        
+        # 설정 불러오기
         logger.info("DataManager 초기화 시작")
         
-        # config.py의 WAREHOUSES 설정과 일치하도록 온도 임계값 설정
+        # 초기 임계값 기본값 설정 (서버 연결 전)
         self.temp_thresholds = {
-            'A': {'min': -30, 'max': -18},  # 냉동 (-30°C ~ -18°C)
-            'B': {'min': 0, 'max': 10},     # 냉장 (0°C ~ 10°C)
-            'C': {'min': 15, 'max': 25}     # 상온 (15°C ~ 25°C)
+            'A': {'min': -30, 'max': -18, 'type': 'freezer'},
+            'B': {'min': 0, 'max': 10, 'type': 'refrigerator'},
+            'C': {'min': 15, 'max': 25, 'type': 'room_temp'}
         }
-        
+            
         # 창고 데이터 초기화 (DB의 warehouse 테이블과 일치)
         self._warehouse_data = {
             "A": {
@@ -142,9 +140,74 @@ class DataManager(QObject):
         self._running = True
         self.polling_thread = threading.Thread(target=self._poll_server_data, daemon=True)
         self.polling_thread.start()
-        
+        self._initialized = True
         logger.info("DataManager 초기화 완료")
-    
+
+    # 이전에 제안한 _load_temperature_thresholds 메서드를 다음과 같이 수정
+
+    def _load_temperature_thresholds(self):
+        """서버에서 온도 임계값 로드"""
+        if not self.is_server_connected() or not self._server_connection:
+            logger.warning("서버 연결 없음 - 기본 온도 임계값 사용")
+            return False
+            
+        try:
+            # 서버에서 온도 임계값 조회
+            thresholds = self._server_connection.get_temperature_thresholds()
+            if thresholds:
+                # 동일한 필드 이름 사용을 위한 변환
+                for wh_id, data in thresholds.items():
+                    if "min" in data:
+                        self.temp_thresholds[wh_id] = {
+                            "min": data["min"],
+                            "max": data["max"],
+                            "type": data.get("type", "unknown")
+                        }
+                
+                logger.info("서버에서 온도 임계값 로드 완료")
+                # 온도 임계값 변경 이벤트 발생 (GUI 업데이트용)
+                self.warehouse_data_changed.emit()
+                return True
+        except Exception as e:
+            logger.error(f"온도 임계값 로드 오류: {str(e)}")
+        
+        return False
+
+    # 폴링 스레드에 온도 임계값 주기적 갱신 로직 추가
+    def _poll_server_data(self):
+        """실시간 이벤트로 업데이트되지 않는 중요 데이터만 주기적으로 폴링"""
+        logger.info("데이터 폴링 스레드 시작 - 최소 폴링 모드")
+        
+        # 데이터 유형별 폴링 주기 설정 (초 단위)
+        polling_intervals = {
+            "temperature_thresholds": 120,  # 온도 임계값은 2분마다
+            "environment": 120,             # 환경 데이터는 온도 이벤트로 실시간 업데이트되므로 거의 폴링 필요 없음
+            # ... 기존 폴링 간격 ...
+        }
+        
+        # 데이터 유형별 마지막 폴링 시간
+        last_poll_time = {k: 0 for k in polling_intervals.keys()}
+        
+        while self._running:
+            try:
+                if self.is_server_connected():
+                    current_time = time.time()
+                    
+                    # 온도 임계값 (주기적 확인)
+                    if current_time - last_poll_time["temperature_thresholds"] >= polling_intervals["temperature_thresholds"]:
+                        self._load_temperature_thresholds()
+                        last_poll_time["temperature_thresholds"] = current_time
+                    
+                    # ... 기존 폴링 로직 ...
+                
+                # 15초 간격으로 폴링 확인
+                time.sleep(15)
+                
+            except Exception as e:
+                logger.error(f"데이터 폴링 중 오류: {str(e)}")
+                # ... 오류 처리 ...
+                time.sleep(15)
+
     def set_server_connection(self, server_connection):
         """서버 연결 객체 설정"""
         self._server_connection = server_connection
@@ -153,6 +216,15 @@ class DataManager(QObject):
         # 서버 연결 상태 변경 이벤트 연결
         if hasattr(server_connection, 'connectionStatusChanged'):
             server_connection.connectionStatusChanged.connect(self._handle_server_connection_changed)
+        
+        # 서버 이벤트 핸들러 연결 추가
+        if hasattr(server_connection, 'eventReceived'):
+            server_connection.eventReceived.connect(self.handle_server_event)
+            logger.info("서버 이벤트 핸들러 연결 완료")
+        
+        # 서버 연결되면 온도 임계값 로드
+        if self.is_server_connected():
+            self._load_temperature_thresholds()
     
     def _handle_server_connection_changed(self, connected, message=""):
         """서버 연결 상태 변경 처리"""
@@ -161,8 +233,62 @@ class DataManager(QObject):
         
         # 서버 연결 되었을 때 즉시 데이터 갱신
         if connected:
+            # 온도 임계값 로드
+            self._load_temperature_thresholds()
+            # 다른 데이터 로드
             self._fetch_all_data()
     
+    def handle_server_event(self, category, action, payload):
+        """서버 이벤트 처리"""
+        logger.debug(f"서버 이벤트 수신: {category}/{action}")
+        
+        try:
+            # 환경 관련 이벤트 처리
+            if category == "environment":
+                # 팬 상태 업데이트 이벤트
+                if action == "fan_status_update" and "warehouse" in payload:
+                    warehouse_id = payload.get("warehouse")
+                    fan_mode = payload.get("mode", "off")
+                    fan_speed = payload.get("speed", 0)
+                    
+                    # 팬 상태 업데이트
+                    self.update_fan_status(warehouse_id, fan_mode, fan_speed)
+                    logger.debug(f"팬 상태 업데이트: 창고={warehouse_id}, 모드={fan_mode}, 속도={fan_speed}")
+                    
+                # 온도 업데이트 이벤트
+                elif action == "temperature_update" and "warehouse_id" in payload:
+                    warehouse_id = payload.get("warehouse_id")
+                    temperature = payload.get("temperature")
+                    
+                    if warehouse_id in self._warehouse_data:
+                        self._warehouse_data[warehouse_id]["temperature"] = temperature
+                        self.warehouse_data_changed.emit()
+                        
+                # 경고 상태 업데이트 이벤트
+                elif action == "warehouse_warning" and "warehouse" in payload:
+                    warehouse_id = payload.get("warehouse")
+                    warning = payload.get("warning", False)
+                    
+                    if warehouse_id in self._warehouse_data:
+                        status = "경고" if warning else "정상"
+                        self._warehouse_data[warehouse_id]["status"] = status
+                        self.warehouse_data_changed.emit()
+                        
+                        # 경고 상태 변경 시 알림 추가
+                        warehouse_name = "냉동 창고"
+                        if warehouse_id == "B":
+                            warehouse_name = "냉장 창고"
+                        elif warehouse_id == "C":
+                            warehouse_name = "상온 창고"
+                        
+                        if warning:
+                            self.add_notification(f"{warehouse_name}({warehouse_id}) 온도 경고 발생")
+                        else:
+                            self.add_notification(f"{warehouse_name}({warehouse_id}) 온도 정상 복귀")
+                    
+        except Exception as e:
+            logger.error(f"서버 이벤트 처리 오류: {str(e)}")
+
     def is_server_connected(self):
         """서버 연결 상태 반환 - 모든 페이지가 이 메서드를 사용해야 함"""
         return self._server_connected and self._server_connection and self._server_connection.is_connected

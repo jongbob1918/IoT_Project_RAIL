@@ -344,6 +344,9 @@ class WindowClass(QMainWindow):
             page_name = "dashboard"
         elif target_page == self.page_environment:
             page_name = "environment"
+            # 환경 페이지인 경우 온도 임계값 새로고침
+            if self.is_server_connected() and hasattr(self.data_manager, '_load_temperature_thresholds'):
+                self.data_manager._load_temperature_thresholds()
         elif target_page == self.page_inventory:
             page_name = "inventory"
         elif target_page == self.page_expiration:
@@ -356,7 +359,7 @@ class WindowClass(QMainWindow):
         # 데이터 로드
         if page_name and self.is_server_connected():
             self.data_manager.load_page_data(page_name)
-
+            
     def closeEvent(self, event):
         """애플리케이션 종료 시 호출되는 이벤트 핸들러"""
         # 서버 연결 종료

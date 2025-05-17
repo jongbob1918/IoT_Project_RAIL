@@ -135,11 +135,11 @@ class EnvironmentPage(BasePage):
     def setup_temperature_controls(self):
         """온도 입력 제한 설정 및 초기값 설정"""
         try:
-            # 온도 입력 범위 제한
+            # 온도 입력 범위 제한 - 데이터 매니저에서 가져오기
             self.temp_ranges = {
-                "A": (self.temp_thresholds["A"]["min"], self.temp_thresholds["A"]["max"]),  # 냉동 창고
-                "B": (self.temp_thresholds["B"]["min"], self.temp_thresholds["B"]["max"]),  # 냉장 창고
-                "C": (self.temp_thresholds["C"]["min"], self.temp_thresholds["C"]["max"])   # 상온 창고
+                "A": (self.temp_thresholds["A"]["min"], self.temp_thresholds["A"]["max"]),
+                "B": (self.temp_thresholds["B"]["min"], self.temp_thresholds["B"]["max"]),
+                "C": (self.temp_thresholds["C"]["min"], self.temp_thresholds["C"]["max"])
             }
             
             # 각 창고별 설정
@@ -162,7 +162,57 @@ class EnvironmentPage(BasePage):
         except Exception as e:
             logger.error(f"온도 컨트롤 설정 오류: {str(e)}")
             self.show_status_message("온도 컨트롤 초기화 오류", is_error=True)
-    
+
+    # warehouse_data_changed 시그널 핸들러 수정
+    def update_warehouse_data(self):
+        """데이터 관리자로부터 창고 데이터 업데이트"""
+        try:
+            warehouse_data = self.data_manager.get_warehouse_data()
+            
+            # 온도 임계값 업데이트 (변경될 수 있으므로)
+            self.temp_thresholds = self.data_manager.get_temperature_thresholds()
+            
+            # 범위 업데이트 및 QValidator 재설정
+            updated_ranges = False
+            if self.temp_thresholds:
+                for wh_id in self.warehouses:
+                    if wh_id in self.temp_thresholds:
+                        old_min, old_max = self.temp_ranges.get(wh_id, (None, None))
+                        new_min = self.temp_thresholds[wh_id].get("min")
+                        new_max = self.temp_thresholds[wh_id].get("max")
+                        
+                        if old_min != new_min or old_max != new_max:
+                            # 범위가 변경됨
+                            self.temp_ranges[wh_id] = (new_min, new_max)
+                            updated_ranges = True
+                            
+                            # QValidator 업데이트
+                            widgets = self.warehouse_widgets[wh_id]
+                            temp_validator = QDoubleValidator(new_min, new_max, 1)
+                            temp_validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+                            widgets["temp_input"].setValidator(temp_validator)
+            
+            # 범위 변경 시 알림 표시
+            if updated_ranges:
+                self.show_status_message("온도 범위가 업데이트되었습니다.", is_info=True)
+            
+            # 기존 로직 계속 실행
+            for wh_id, data in warehouse_data.items():
+                if wh_id in self.warehouses:
+                    # 현재 온도 업데이트
+                    self.warehouses[wh_id]["current_temp"] = data["temperature"]
+                    self.warehouses[wh_id]["status"] = data["status"]
+                    
+                    # 모드 업데이트 (온도 비교)
+                    self.update_operation_mode(wh_id)
+            
+            # UI 업데이트
+            self.update_ui()
+        except Exception as e:
+            logger.error(f"창고 데이터 업데이트 오류: {str(e)}")
+            self.handle_data_fetch_error("창고 데이터 업데이트", str(e))
+
+
     def connect_data_signals(self):
         """데이터 변경 이벤트 연결"""
         self.data_manager.warehouse_data_changed.connect(self.update_warehouse_data)
@@ -266,17 +316,16 @@ class EnvironmentPage(BasePage):
                 if warehouse["status"] == "정상":
                     widgets["status_indicator"].setText("정상")
                     widgets["status_indicator"].setStyleSheet("background-color: #4CAF50; color: white; border-radius: 5px; padding: 2px;")
-                    # 정상 상태일 때 mode_indicator 숨기기
-                    widgets["mode_indicator"].show()  # 원래 코드는 hide()였지만 UI 파일을 보니 항상 표시하는 것 같음
-                else:  # 주의, 비정상 또는 연결 안됨 상태
-                    if warehouse["status"] == "주의":
-                        widgets["status_indicator"].setText("주의")
-                        widgets["status_indicator"].setStyleSheet("background-color: #FFEB3B; color: black; border-radius: 5px; padding: 2px;")
-                    else:  # 비정상 또는 연결 안됨
-                        widgets["status_indicator"].setText(warehouse["status"])
-                        widgets["status_indicator"].setStyleSheet("background-color: #F44336; color: white; border-radius: 5px; padding: 2px;")
-                    
-                    # 비정상 상태일 때 mode_indicator 표시
+                    # 정상 상태일 때도 mode_indicator 표시
+                    widgets["mode_indicator"].show()
+                elif warehouse["status"] == "경고":  # "주의"에서 "경고"로 변경
+                    widgets["status_indicator"].setText("경고")
+                    widgets["status_indicator"].setStyleSheet("background-color: #F44336; color: white; border-radius: 5px; padding: 2px;")
+                    # 경고 상태일 때도 mode_indicator 표시
+                    widgets["mode_indicator"].show()
+                else:  # 연결 안됨 등 기타 상태
+                    widgets["status_indicator"].setText(warehouse["status"])
+                    widgets["status_indicator"].setStyleSheet("background-color: #9E9E9E; color: white; border-radius: 5px; padding: 2px;")
                     widgets["mode_indicator"].show()
                     
                 # 모드 표시 업데이트
@@ -388,10 +437,10 @@ class EnvironmentPage(BasePage):
     def handleEnvironmentEvent(self, action, payload):
         """서버로부터 환경 이벤트 처리"""
         try:
-            # temperature_update 액션 처리 - JSON 구조에 맞게 수정
+            # temperature_update 액션 처리
             if action == "temperature_update" and "warehouse_id" in payload and "temperature" in payload:
                 wh_id = payload.get("warehouse_id")
-                temperature = payload.get("temperature")  # temperature 필드 사용
+                temperature = payload.get("temperature")
                 
                 if wh_id in self.warehouses:
                     self.warehouses[wh_id]["current_temp"] = temperature
@@ -399,6 +448,39 @@ class EnvironmentPage(BasePage):
                     self.update_ui()
                     
                     logger.debug(f"환경 이벤트: 창고 {wh_id} 온도 업데이트 - {temperature}°C")
+                    
+            # 팬 상태 업데이트 처리 추가
+            elif action == "fan_status_update" and "warehouse" in payload:
+                wh_id = payload.get("warehouse")
+                fan_mode = payload.get("mode", "off")
+                fan_speed = payload.get("speed", 0)
+                
+                if wh_id in self.warehouses:
+                    self.warehouses[wh_id]["fan_mode"] = fan_mode
+                    self.warehouses[wh_id]["fan_speed"] = fan_speed
+                    
+                    # 팬 모드에 따라 운영 모드도 동기화
+                    if fan_mode == "cool":
+                        self.warehouses[wh_id]["mode"] = "냉방 모드"
+                    elif fan_mode == "heat":
+                        self.warehouses[wh_id]["mode"] = "난방 모드"
+                    elif fan_speed == 0:
+                        self.warehouses[wh_id]["mode"] = "정지"
+                    
+                    logger.debug(f"환경 이벤트: 창고 {wh_id} 팬 상태 업데이트 - 모드: {fan_mode}, 속도: {fan_speed}")
+                    self.update_ui()
+                    
+            # 창고 경고 상태 처리 추가
+            elif action == "warehouse_warning" and "warehouse" in payload:
+                wh_id = payload.get("warehouse")
+                warning = payload.get("warning", False)
+                
+                if wh_id in self.warehouses:
+                    status = "경고" if warning else "정상"  # "주의"를 "경고"로 변경
+                    self.warehouses[wh_id]["status"] = status
+                    logger.debug(f"환경 이벤트: 창고 {wh_id} 경고 상태 - {warning}")
+                    self.update_ui()
+                    
         except Exception as e:
             logger.error(f"환경 이벤트 처리 오류: {str(e)}")
             self.show_status_message(f"환경 이벤트 처리 오류: {str(e)}", is_error=True)
