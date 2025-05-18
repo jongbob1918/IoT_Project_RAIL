@@ -1,7 +1,8 @@
 # db/db_connection.py
 import logging
+import os
+import sys
 from typing import Optional, Dict, List, Any, Tuple
-from datetime import datetime
 
 # MySQL 라이브러리 임포트
 try:
@@ -12,34 +13,37 @@ except ImportError:
     logging.warning("MySQL 라이브러리를 가져올 수 없습니다. 'pip install mysql-connector-python' 명령어로 설치하세요.")
     MYSQL_AVAILABLE = False
 
-from .config import DBConfig
+# 상위 디렉토리를 import path에 추가 (config.py 접근용)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
 
 logger = logging.getLogger(__name__)
 
 class DBConnection:
-    """데이터베이스 연결 관리 클래스
-    
-    이 클래스는 데이터베이스 연결 풀을 관리하고 쿼리 실행을 담당합니다.
-    싱글톤 패턴으로 구현되어 애플리케이션 전체에서 하나의 인스턴스만 사용합니다.
-    """
+    """데이터베이스 연결 관리 클래스"""
     
     _instance = None
     
-    def __new__(cls, config: Optional[DBConfig] = None):
+    def __new__(cls, *args, **kwargs):
         """싱글톤 패턴 구현"""
         if cls._instance is None:
             cls._instance = super(DBConnection, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
-    
-    def __init__(self, config: Optional[DBConfig] = None):
+
+    def __init__(self):
         """초기화 (싱글톤이므로 한 번만 실행)"""
         if hasattr(self, '_initialized') and self._initialized:
             return
         
-        # 설정 불러오기
-        self.config = config or DBConfig.from_config_file()
-        logger.info(f"데이터베이스 설정 로드: {self.config}")
+        # 설정 직접 사용
+        self.host = DB_HOST
+        self.port = DB_PORT
+        self.user = DB_USER
+        self.password = DB_PASSWORD
+        self.database = DB_NAME
+        
+        logger.info(f"데이터베이스 설정 로드: {self.host}:{self.port}/{self.database}")
         
         # DB 연결 초기화
         self.connection = None
@@ -52,53 +56,37 @@ class DBConnection:
             logger.warning("MySQL 라이브러리가 설치되어 있지 않습니다.")
         
         self._initialized = True
-    
+        
     def connect(self) -> bool:
         """데이터베이스 연결"""
-        if not MYSQL_AVAILABLE:
-            logger.warning("MySQL 라이브러리가 설치되어 있지 않습니다.")
-            self.connected = False
-            return False
-        
         try:
-            # 연결 시도
-            logger.debug(f"MySQL 연결 시도: {self.config.host}:{self.config.port}")
-            
             self.connection = mysql.connector.connect(
-                host=self.config.host,
-                port=self.config.port,
-                user=self.config.user,
-                password=self.config.password,
-                database=self.config.database
+                host=self.host,
+                port=self.port,
+                user=self.user,
+                password=self.password,
+                database=self.database
             )
-            
-            if self.connection.is_connected():
-                db_info = self.connection.get_server_info()
-                logger.info(f"MySQL 서버 '{self.config.database}'에 연결됨. 버전: {db_info}")
-                self.connected = True
-                return True
-            else:
-                logger.error("MySQL 연결 실패")
-                self.connected = False
-                return False
-                
+            self.connected = True
+            logger.info(f"데이터베이스 '{self.database}'에 연결됨")
+            return True
         except Exception as e:
-            logger.error(f"데이터베이스 연결 오류: {str(e)}")
             self._handle_connection_error(e)
-            self.connection = None
             self.connected = False
             return False
-    
+
     def _handle_connection_error(self, error):
         """연결 오류 처리 및 상세 로깅"""
         error_str = str(error)
         if "Access denied" in error_str:
             logger.error("사용자 이름 또는 비밀번호가 잘못되었습니다.")
         elif "Unknown database" in error_str:
-            logger.error(f"데이터베이스 '{self.config.database}'가 존재하지 않습니다.")
+            logger.error(f"데이터베이스 '{self.database}'가 존재하지 않습니다.")
         elif "Can't connect to MySQL server" in error_str:
-            logger.error(f"MySQL 서버({self.config.host}:{self.config.port})에 연결할 수 없습니다.")
-    
+            logger.error(f"MySQL 서버({self.host}:{self.port})에 연결할 수 없습니다.")
+        else:
+            logger.error(f"데이터베이스 연결 오류: {error_str}")
+        
     def ensure_connection(self) -> bool:
         """연결 확인 및 필요시 재연결"""
         if not MYSQL_AVAILABLE:
@@ -188,9 +176,9 @@ class DBConnection:
         """데이터베이스 연결 상태 반환"""
         status = {
             "connected": self.connected,
-            "host": self.config.host,
-            "database": self.config.database,
-            "user": self.config.user
+            "host": self.host,
+            "database": self.database,
+            "user": self.user
         }
         
         if self.connected and self.connection:

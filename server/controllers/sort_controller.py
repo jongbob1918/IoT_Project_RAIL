@@ -1,9 +1,10 @@
+# sort_controller.py
 import logging
 import time
 import threading
 from typing import Dict, Tuple, Optional, Any
-from datetime import datetime
-from utils.protocol import *  # 프로토콜 정의 임포트
+from datetime import datetime  
+from utils.protocol import *  
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ class SortController:
         self.socketio = socketio
         self.tcp_handler = tcp_handler
         self.db_helper = db_helper  # DB 헬퍼 설정
+        self.logger = logger  # logger 속성 추가
         
         # 상태 정보 초기화
         self.state = self.STATE_STOPPED
@@ -219,6 +221,33 @@ class SortController:
         except Exception as e:
             logger.error(f"분류 완료 이벤트 처리 오류: {str(e)}")
     
+    def _process_sort_controller_message(self, message: str) -> None:
+        """분류기 메시지 처리"""
+        try:
+            # 기본 검증
+            if len(message) < 3 or not message.startswith("S"):
+                return
+                
+            msg_type = message[1]
+            content = message[2:].strip()
+            
+            # 바코드 처리
+            if msg_type == "E" and content.startswith("bc"):
+                barcode = content[2:]
+                category = "E"  # 기본값
+                
+                # 바코드 파싱 (1자리 카테고리)
+                if len(barcode) >= 1:
+                    code = barcode[0]
+                    if code == "1": category = "A"
+                    elif code == "2": category = "B"
+                    elif code == "3": category = "C"
+                    
+                # 분류 명령 전송
+                self._send_sort_command(category)
+        except Exception as e:
+            logger.error(f"메시지 처리 오류: {str(e)}")
+
     def _handle_barcode(self, barcode_data):
         """
         바코드 데이터 처리 메서드
@@ -247,7 +276,7 @@ class SortController:
                     "payload": {
                         "barcode": barcode_data[2:] if barcode_data.startswith("bc") else barcode_data
                     },
-                    "timestamp": int(datetime.datetime.now().timestamp())
+                    "timestamp": int(time.time())  # 수정: 콜론(:) 문제 해결
                 }
                 self.socketio.emit("event", event_data, namespace='/ws')
                 

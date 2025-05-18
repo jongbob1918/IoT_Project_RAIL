@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from flask import Blueprint, jsonify, request
 from api import get_controller
-from db.db_manager import DBManager
+from db import DBManager
 import logging
 
 # Blueprint 초기화

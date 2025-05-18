@@ -1,9 +1,10 @@
 import logging
-from typing import Dict, Any, Optional, Tuple, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 from datetime import datetime
 import time
 from config import CONFIG
 from utils.protocol import create_message, parse_message, DEVICE_WAREHOUSE, MSG_COMMAND
+
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class EnvController:
         self.warning_log_repo = warning_log_repo
         
         # 창고 설정 초기화
-        self.warehouses = list(CONFIG["WAREHOUSES"].keys())
+        self.warehouses = list(CONFIG.get("WAREHOUSES", {}).keys() if CONFIG else [])
         
         # 창고별 상태 데이터 기본값 설정
         self.warehouse_data = {}
@@ -51,9 +52,23 @@ class EnvController:
                 "type": None
             }
     
-    # DB에서 설정 로드 (기본값 업데이트)
-    self._load_warehouse_settings()
-
+        # DB에서 설정 로드 (기본값 업데이트)
+        self._load_warehouse_settings()
+        
+        
+    def _set_default_warehouse_settings(self):
+        """기본 창고 설정 적용"""
+        defaults = {
+            "A": {"temp_range": (-30, -18), "target_temp": -22, "type": "freezer"},
+            "B": {"temp_range": (0, 10), "target_temp": 5, "type": "refrigerator"},
+            "C": {"temp_range": (15, 25), "target_temp": 20, "type": "room_temp"}
+        }
+        
+        for wh_id, setting in defaults.items():
+            if wh_id in self.warehouse_data:
+                self.warehouse_data[wh_id]["temp_range"] = setting["temp_range"]
+                self.warehouse_data[wh_id]["target_temp"] = setting["target_temp"]
+                self.warehouse_data[wh_id]["type"] = setting["type"]
     
     def set_target_temperature(self, warehouse: str, temperature: float) -> Dict[str, Any]:
         """목표 온도 설정
@@ -130,7 +145,7 @@ class EnvController:
                     return True
             
             # DB 로드 실패 시 CONFIG 사용
-            if 'CONFIG' in globals() and 'WAREHOUSES' in CONFIG:
+            if CONFIG and 'WAREHOUSES' in CONFIG:
                 warehouses = CONFIG['WAREHOUSES']
                 for wh_id, setting in warehouses.items():
                     if wh_id in self.warehouse_data:

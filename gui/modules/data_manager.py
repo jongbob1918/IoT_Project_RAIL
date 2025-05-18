@@ -46,6 +46,8 @@ class DataManager(QObject):
     
     def __init__(self):
         """초기화 (싱글톤이므로 한 번만 실행)"""
+        super().__init__()  # 추가: 부모 클래스(QObject) 초기화
+        
         if hasattr(self, '_initialized') and self._initialized:
             return
         

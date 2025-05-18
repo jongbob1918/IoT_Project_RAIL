@@ -1,21 +1,11 @@
+# main.py
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from utils.logging import setup_logger
 from flask_socketio import SocketIO
 import datetime  # 타임스탬프 생성용 추가
 from config import CONFIG, SERVER_HOST, SERVER_PORT, TCP_PORT, DEBUG, SOCKETIO_PING_TIMEOUT, SOCKETIO_PING_INTERVAL, SOCKETIO_ASYNC_MODE, MULTI_PORT_MODE, TCP_PORTS, HARDWARE_IP, UDP_HOST, UDP_PORT
-from api.sort_api import sort_bp
-from api.inventory_api import bp as inventory_bp
-from api.env_api import bp as env_bp
-from api.access_api import bp as access_bp
-from api.expiry_api import bp as expiry_bp
 from utils.system import SystemMonitor
-from controllers.sort_controller import SortController
-from utils.tcp_handler import TCPHandler
-from utils.multi_tcp_handler import MultiTCPHandler
-from api import set_controller, register_controller  # 컨트롤러 관리 함수 임포트
-from api.sort_api import init_controller  # init_controller 함수 직접 임포트
-from utils.udp_handler import UDPBarcodeHandler
 
 # logger 초기화 전에 로그 디렉토리 확인
 import os
@@ -89,6 +79,7 @@ def handle_disconnect():
 if MULTI_PORT_MODE:
     # 멀티포트 모드: 각 디바이스별로 별도 포트 사용
     logger.info("멀티포트 모드로 TCP 핸들러 초기화")
+    from utils.multi_tcp_handler import MultiTCPHandler
     devices_config = {}
     for device_id, port in TCP_PORTS.items():
         devices_config[device_id] = {
@@ -99,6 +90,7 @@ if MULTI_PORT_MODE:
 else:
     # 단일 포트 모드: 모든 디바이스가 동일 포트 사용
     logger.info("단일 포트 모드로 TCP 핸들러 초기화")
+    from utils.tcp_handler import TCPHandler
     tcp_handler = TCPHandler(SERVER_HOST, TCP_PORT)
 
 # TCP 서버 시작
@@ -116,57 +108,79 @@ def init_controllers():
     """모든 컨트롤러를 초기화하고 등록합니다."""
     controllers = {}
     
-    # 분류기 컨트롤러 초기화
-    sort_controller = SortController(socketio, tcp_handler, db_manager)
-    controllers["sort"] = sort_controller
-    register_controller("sort", sort_controller)
-    
-    # 인벤토리 컨트롤러 초기화
-    from controllers.inventory_controller import InventoryController
-    inventory_controller = InventoryController(tcp_handler, socketio, db_manager)
-    controllers["inventory"] = inventory_controller
-    register_controller("inventory", inventory_controller)
-    
-    # 환경 컨트롤러 초기화
-    from controllers.env_controller import EnvController
-    env_controller = EnvController(tcp_handler, socketio, db_manager)
-    controllers["environment"] = env_controller
-    register_controller("environment", env_controller)
-    
-    # 출입 컨트롤러 초기화
-    from controllers.gate.gate_controller import GateController
-    access_controller = GateController(tcp_handler, socketio, db_manager)
-    controllers["access"] = access_controller
-    register_controller("access", access_controller)
-    
-    # 유통기한 관리 컨트롤러 초기화
-    from controllers.expiry_controller import ExpiryController
-    expiry_controller = ExpiryController(tcp_handler, socketio, db_manager)
-    controllers["expiry"] = expiry_controller
-    register_controller("expiry", expiry_controller)
+    # 컨트롤러 모듈 지연 임포트 (순환 참조 방지)
+    try:
+        # 컨트롤러 및 API 모듈 임포트
+        from controllers.sort_controller import SortController
+        from controllers.inventory_controller import InventoryController
+        from controllers.env_controller import EnvController
+        from controllers.gate.gate_controller import GateController
+        from controllers.expiry_controller import ExpiryController
+        from api import register_controller, set_controller
+
+        # 분류기 컨트롤러 초기화
+        sort_controller = SortController(socketio, tcp_handler, db_manager)
+        controllers["sort"] = sort_controller
+        register_controller("sort", sort_controller)
+        
+        # 인벤토리 컨트롤러 초기화
+        inventory_controller = InventoryController(tcp_handler, socketio, db_manager)
+        controllers["inventory"] = inventory_controller
+        register_controller("inventory", inventory_controller)
+        
+        # 환경 컨트롤러 초기화
+        env_controller = EnvController(tcp_handler, socketio, db_manager)
+        controllers["environment"] = env_controller
+        register_controller("environment", env_controller)
+        
+        # 출입 컨트롤러 초기화
+        access_controller = GateController(tcp_handler, socketio, db_manager)
+        controllers["access"] = access_controller
+        register_controller("access", access_controller)
+        
+        # 유통기한 관리 컨트롤러 초기화
+        expiry_controller = ExpiryController(tcp_handler, socketio, db_manager)
+        controllers["expiry"] = expiry_controller
+        register_controller("expiry", expiry_controller)
+        
+        # 이전 버전 호환성을 위한 설정
+        set_controller(sort_controller)  # API에 기본 컨트롤러 등록
+        
+    except Exception as e:
+        logger.error(f"컨트롤러 초기화 중 오류: {str(e)}")
     
     return controllers
 
 # 모든 컨트롤러 초기화
 controllers = init_controllers()
 
-# 이전 버전 호환성을 위한 설정
-sort_controller = controllers.get("sort")
-set_controller(sort_controller)  # API에 기본 컨트롤러 등록
-
 # 분류기 컨트롤러 초기화 확인 및 블루프린트에 등록
+sort_controller = controllers.get("sort")
 if sort_controller:
     logger.info("Sort 컨트롤러 초기화 성공 - 블루프린트에 등록 중")
+    # API 모듈 지연 임포트 (순환 참조 방지)
+    from api.sort_api import sort_bp, init_controller
     init_controller(sort_controller)  # Blueprint 객체가 아닌 함수 직접 호출
 else:
     logger.error("Sort 컨트롤러 초기화 실패 - API가 올바르게 작동하지 않을 수 있습니다")
 
 # 기능별로 분리된 API 모듈을 등록
-app.register_blueprint(sort_bp, url_prefix='/api/sort')
-app.register_blueprint(inventory_bp, url_prefix='/api/inventory')   
-app.register_blueprint(env_bp, url_prefix='/api/environment')
-app.register_blueprint(access_bp, url_prefix='/api/access')
-app.register_blueprint(expiry_bp, url_prefix='/api/expiry')
+try:
+    # API 블루프린트 지연 임포트 (순환 참조 방지)
+    from api.sort_api import sort_bp
+    from api.inventory_api import bp as inventory_bp
+    from api.env_api import bp as env_bp
+    from api.access_api import bp as access_bp
+    from api.expiry_api import bp as expiry_bp
+    
+    # 블루프린트 등록
+    app.register_blueprint(sort_bp, url_prefix='/api/sort')
+    app.register_blueprint(inventory_bp, url_prefix='/api/inventory')   
+    app.register_blueprint(env_bp, url_prefix='/api/environment')
+    app.register_blueprint(access_bp, url_prefix='/api/access')
+    app.register_blueprint(expiry_bp, url_prefix='/api/expiry')
+except Exception as e:
+    logger.error(f"API 블루프린트 등록 중 오류: {str(e)}")
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
@@ -204,6 +218,7 @@ def shutdown():
 if __name__ == '__main__':
     try:
         # UDP 바코드 핸들러 초기화 (콜백 함수로 handle_barcode 등록)
+        from utils.udp_handler import UDPBarcodeHandler
         udp_handler = UDPBarcodeHandler(
             host=UDP_HOST,
             port=UDP_PORT,

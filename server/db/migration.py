@@ -1,26 +1,41 @@
 # db/migration.py
 import os
 import logging
-from pathlib import Path
 from typing import Optional, List, Dict, Any
+
+# MySQL 라이브러리 임포트
+try:
+    import mysql.connector
+    from mysql.connector import Error as MySQLError
+    MYSQL_AVAILABLE = True
+except ImportError:
+    logging.warning("MySQL 라이브러리를 가져올 수 없습니다. 'pip install mysql-connector-python' 명령어로 설치하세요.")
+    MYSQL_AVAILABLE = False
+
+# 상위 디렉토리를 import path에 추가 (config.py 접근용)
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # 데이터베이스 연결 모듈 임포트
 from .db_connection import DBConnection
-from .config import DBConfig
+from config import DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME
 
 logger = logging.getLogger(__name__)
 
 class DatabaseMigration:
     """데이터베이스 마이그레이션 및 초기화 관리 클래스"""
     
-    def __init__(self, db_config: Optional[DBConfig] = None):
-        """초기화
+    def __init__(self):
+        """초기화"""
+        # config 객체 생성
+        self.config = type('Config', (), {
+            'host': DB_HOST,
+            'port': DB_PORT,
+            'user': DB_USER,
+            'password': DB_PASSWORD,
+            'database': DB_NAME
+        })
         
-        Args:
-            db_config: 데이터베이스 설정 객체
-        """
-        self.config = db_config or DBConfig.from_config_file()
-            
         # 필수 테이블 목록
         self.required_tables = [
             "warehouse", "product", "product_item", "employee", 
@@ -31,13 +46,13 @@ class DatabaseMigration:
         # DB 연결 객체 (지연 초기화)
         self._db_connection = None
         
-        logger.info(f"데이터베이스 마이그레이션 초기화: {self.config}")
+        logger.info(f"데이터베이스 마이그레이션 초기화: host={self.config.host}, db={self.config.database}")
     
     @property
     def db(self) -> DBConnection:
         """데이터베이스 연결 객체 반환 (지연 초기화)"""
         if self._db_connection is None:
-            self._db_connection = DBConnection(self.config)
+            self._db_connection = DBConnection()
         return self._db_connection
     
     def init_database(self) -> bool:
@@ -268,30 +283,73 @@ class DatabaseMigration:
                 else:
                     logger.warning(f"테이블 '{table}'의 SQL 정의가 없습니다.")
             
-            # 기본 데이터 삽입 (warehouse 테이블)
-            try:
-                check_query = "SELECT COUNT(*) FROM warehouse"
-                result = self.db.execute_query(check_query)
+            # 기본 데이터 삽입 추가
+            if not self._insert_initial_data():
+                logger.error("기본 데이터 삽입 실패")
+                return False
                 
-                if result and result[0][0] == 0:
-                    # target_temp를 포함한 초기 데이터 삽입
-                    insert_sql = """
-                        INSERT INTO `warehouse` VALUES
-                        ('A', '냉동', -30, -18, -22, 16, 0),  /* 목표 온도: -22 */
-                        ('B', '냉장', 0, 10, 5, 16, 0),       /* 목표 온도: 5 */
-                        ('C', '상온', 15, 25, 20, 16, 0);     /* 목표 온도: 20 */
-                    """
-                    self.db.execute_update(insert_sql)
-                    logger.info("기본 창고 데이터 삽입 완료")
-            except Exception as e:
-                logger.error(f"기본 데이터 삽입 중 오류: {str(e)}")
-            
             return True
-            
         except Exception as e:
             logger.error(f"테이블 생성 중 오류: {str(e)}")
             return False
     
+    def _insert_initial_data(self) -> bool:
+        """기본 데이터 삽입"""
+        try:
+            # 창고 데이터 삽입
+            warehouse_sql = """
+                INSERT INTO `warehouse` VALUES
+                ('A', '냉동', -30, -18, -22, 16, 0),
+                ('B', '냉장', 0, 10, 5, 16, 0),
+                ('C', '상온', 15, 25, 20, 16, 0);
+            """
+            
+            # self.db 객체 사용
+            self.db.execute_update(warehouse_sql)
+            logger.info("창고 기본 데이터 삽입 완료")
+            
+            # 제품 데이터 삽입
+            product_sql = """
+                INSERT INTO `product` VALUES
+                ('01','농심 한입 닭가슴살 150g(5ea)','육류',8000,'A'),
+                ('02','농심 대패삼겹살 800g','육류',15000,'A'),
+                ('03','CJ 비비고 왕교자 800g','냉동식품',8500,'A'),
+                ('04','CJ 묵은지 김치 200g','반찬',5000,'B'),
+                ('05','동서식품 찌개용 두부 300g','반찬',2000,'B'),
+                ('06','삼양 우유 1L','유제품',2500,'B'),
+                ('07','삼양 체다 치즈 10개입','유제품',3000,'B'),
+                ('08','해태 빅 요구르트','유제품',800,'B'),
+                ('09','롯데 티라미수 (중)','디저트',2500,'B'),
+                ('10','대상 즉석밥 150g(5ea)','즉석식품',4500,'C'),
+                ('11','농심 신라면(5ea)','즉석식품',3500,'C'),
+                ('12','대상 쌀로 만든 쿠키(10ea)','디저트',3000,'C'),
+                ('13','샘표 진간장(200g)','식재료',2500,'C'),
+                ('14','정관장 홍삼액(30ea)','건강식품',40000,'C'),
+                ('15','해태 태양초 고추장 1kg','식재료',8000,'C');
+            """
+            
+            self.db.execute_update(product_sql)
+            logger.info("제품 기본 데이터 삽입 완료")
+            
+            # 직원 데이터 삽입
+            employee_sql = """
+                INSERT INTO `employee` VALUES
+                ('100001','김민수',NULL,'SW Team'),
+                ('100002','이서연',NULL,'HW Team'),
+                ('100003','박지훈',NULL,'SW Team'),
+                ('100004','최유진',NULL,'HW Team'),
+                ('100005','정하늘',NULL,'SW Team');
+            """
+            
+            self.db.execute_update(employee_sql)
+            logger.info("직원 기본 데이터 삽입 완료")
+            
+            logger.info("모든 기본 데이터 삽입 완료")
+            return True
+        except Exception as e:
+            logger.error(f"기본 데이터 삽입 중 오류: {str(e)}")
+            return False
+
     def _check_missing_tables(self) -> List[str]:
         """필요한 테이블 중 누락된 테이블 확인"""
         try:
