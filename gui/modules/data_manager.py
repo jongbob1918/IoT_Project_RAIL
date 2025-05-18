@@ -690,7 +690,7 @@ class DataManager(QObject):
                     status = response["status"]
                     if status == "running":
                         self._conveyor_status = 1  # 작동중
-                    elif status == "paused":
+                    elif status == "pause":
                         self._conveyor_status = 2  # 일시정지
                 else:
                         self._conveyor_status = 0  # 정지
@@ -760,7 +760,7 @@ class DataManager(QObject):
                         "message": response.get("message", "")}
                     
             elif action == "pause":
-                response = self._server_connection._send_request('POST', 'sort/control', {"action": "stop"})
+                response = self._server_connection._send_request('POST', 'sort/control', {"action": "pause"})
                 if response and "status" in response and response["status"] != "error":
                     self._conveyor_status = 2  # 일시정지
                     self.conveyor_status_changed.emit()

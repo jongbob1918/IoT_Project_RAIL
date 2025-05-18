@@ -278,22 +278,27 @@ class EnvironmentPage(BasePage):
         """운영 모드(냉방/난방/정지) 업데이트"""
         try:
             warehouse = self.warehouses[wh_id]
+            fan_mode = warehouse.get("fan_mode", "off")
+            fan_speed = warehouse.get("fan_speed", 0)
             
-            # 현재 온도와 목표 온도의 차이
-            temp_diff = warehouse["current_temp"] - warehouse["target_temp"]
-            
-            # 온도 차이가 1도 이하면 정지 모드
-            if abs(temp_diff) <= 1.0:
-                warehouse["mode"] = "정지"
-            # 현재 온도가 목표 온도보다 높으면 냉방 모드
-            elif temp_diff > 0:
+            # 팬 모드에 따라 표시 텍스트 결정
+            if fan_mode == "cool":
                 warehouse["mode"] = "냉방 모드"
-            # 현재 온도가 목표 온도보다 낮으면 난방 모드
-            else:
-                warehouse["mode"] = "난방 모드"
+            elif fan_mode == "heat":
+                if wh_id == "C":  # C 창고만 난방 지원
+                    warehouse["mode"] = "난방 모드"
+                else:  # A, B 창고는 난방 지원 안함
+                    warehouse["mode"] = "정지"
+            else:  # off 또는 알 수 없는 모드
+                warehouse["mode"] = "정지"
+                
+            # 팬 속도가 0이면 정지 상태로 간주
+            if fan_speed == 0:
+                warehouse["mode"] = "정지"
+                
         except Exception as e:
             logger.error(f"운영 모드 업데이트 오류: {str(e)}")
-    
+            
     def on_notification(self, message):
         """알림 발생 시 처리"""
         # 환경 관련 알림인 경우 처리

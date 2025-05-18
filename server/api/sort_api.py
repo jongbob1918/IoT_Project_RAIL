@@ -61,6 +61,9 @@ def control_sorter():
     elif action == 'stop':
         success = sort_controller.stop_sorter()
         message = "분류기 정지 명령 전송 성공" if success else "분류기 정지 명령 전송 실패"
+    elif action == "pause":
+        success = sort_controller.pause_sorter()
+        message = "분류기 일시정지 명령 전송 성공" if success else "분류기 일시정지 명령 전송 실패"
     else:
         return jsonify({"error": f"알 수 없는 액션: {action}"}), 400
     

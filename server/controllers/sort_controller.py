@@ -17,7 +17,8 @@ class SortController:
     # 기본 상수 정의
     STATE_STOPPED = "stopped"
     STATE_RUNNING = "running"
-    
+    STATE_PAUSED = "pause"  
+
     def __init__(self, socketio: Any, tcp_handler, db_helper=None):
         """분류기 컨트롤러 초기화"""
         self.socketio = socketio
@@ -134,9 +135,8 @@ class SortController:
         
         elif content.startswith('ps'):
             # 일시정지 명령
-            if hasattr(self, 'pause_sorter'):
-                self.pause_sorter()
-                return True
+            self.pause_sorter()
+            return True
         
         elif content.startswith('so') and len(content) >= 3:
             # 분류 명령 - 'soA', 'soB', 'soC'
@@ -334,14 +334,9 @@ class SortController:
             "sort_counts": self.sort_counts,
             "last_updated": time.time()
         }
-        
+        logger.debug(f"클라이언트로 전송하는 상태: '{self.state}'")
         # 표준화된 이벤트 발송
-        self._emit_standardized_event("sorter", "status_update", {
-            "is_running": self.state == self.STATE_RUNNING,
-            "items_waiting": self.items_waiting,
-            "items_processed": self.items_processed,
-            "sort_counts": self.sort_counts
-        })
+        self._emit_standardized_event("sorter", "status_update", status_data)
     
     def _reset_auto_stop_timer(self):
         """자동 정지 타이머 초기화"""
@@ -393,7 +388,7 @@ class SortController:
     
     def start_sorter(self):
         """분류기를 시작 상태로 설정"""
-        if self.state == self.STATE_STOPPED:
+        if self.state == self.STATE_STOPPED or self.state == self.STATE_PAUSED:
             self.state = self.STATE_RUNNING
             self.motor_active = True
             
@@ -407,18 +402,9 @@ class SortController:
             logger.info(f"분류기 시작 명령 생성: {command.strip()}")
             
             # 분류기 디바이스 연결 확인
-            is_connected = self.tcp_handler.is_device_connected(DEVICE_SORTER)
-            logger.info(f"분류기 디바이스 연결 상태: {is_connected}")
-            
-            # 연결되지 않았다면 클라이언트 연결 리스트 출력
-            if not is_connected:
-                connected_devices = self.tcp_handler.get_connected_devices()
-                logger.info(f"현재 연결된 디바이스 목록: {connected_devices}")
-                logger.warning("분류기 디바이스가 연결되어 있지 않습니다. 하드웨어 연결을 확인하세요.")
-            
-            # 명령 전송
             success = self.tcp_handler.send_message(DEVICE_SORTER, command)
             
+            # 연결되지 않았다면 클라이언트 연결 리스트 출력
             if success:
                 logger.info("분류기 시작 명령 전송 성공")
             else:
@@ -429,6 +415,41 @@ class SortController:
             logger.debug("분류기가 이미 작동 중입니다.")
             return True
     
+    def pause_sorter(self):
+        """분류기를 일시정지 상태로 설정"""
+        # running 상태에서만 일시정지 가능
+        if self.state == self.STATE_RUNNING:
+            # 상태를 일시정지로 변경
+            self.state = self.STATE_PAUSED
+            # 모터는 정지하지만 현재 처리 중이던 항목은 유지
+            self.motor_active = False
+            
+            # 자동 정지 타이머 취소 (일시정지 상태에서는 타임아웃 방지)
+            self._cancel_auto_stop_timer()
+            
+            # 상태 업데이트 이벤트 발송
+            self._emit_status_update()
+            
+            # 프로토콜 형식으로 일시정지 명령 전송
+            # 기존 정지 명령을 사용하되 내부 상태는 paused로 유지
+            command = create_message(DEVICE_SORTER, MSG_COMMAND, SORT_CMD_STOP)
+            
+            # 명령 전송
+            success = self.tcp_handler.send_message(DEVICE_SORTER, command)
+            
+            if success:
+                logger.info("분류기 일시정지 명령 전송 성공")
+            else:
+                logger.error("분류기 일시정지 명령 전송 실패")
+            
+            return success
+        elif self.state == self.STATE_PAUSED:
+            logger.debug("분류기가 이미 일시정지 상태입니다.")
+            return True
+        else:
+            logger.debug("작동 중인 분류기만 일시정지할 수 있습니다.")
+            return False
+            
     def stop_sorter(self):
         """분류기를 정지 상태로 설정"""
         if self.state == self.STATE_RUNNING:

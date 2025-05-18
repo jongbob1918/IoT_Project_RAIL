@@ -26,7 +26,7 @@ class DevicesPage(BasePage):
         """
         super().__init__(parent)
         self.page_name = "장치 관리"  # 기본 클래스 속성 설정
-        
+        self.current_sorter_state = "stopped"  # 'stopped', 'running', 'pause' 중 하나
         # UI 로드
         uic.loadUi("ui/widgets/devices.ui", self)
         
@@ -172,6 +172,9 @@ class DevicesPage(BasePage):
     def on_start_conveyor(self):
         """시작 버튼 클릭 이벤트 처리"""
         try:
+            if self.current_sorter_state == "running":
+                self.show_status_message("분류기가 이미 작동 중입니다.")
+                return
             logger.info("분류기 시작 요청")
             self.add_log_message(f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 분류기 시작 요청")
             
@@ -188,6 +191,7 @@ class DevicesPage(BasePage):
             result = self.data_manager.control_conveyor("start")
             
             if result and result.get("success", False):
+                self.current_sorter_state = "running"  # 상태 업데이트
                 self.conveyor_status.setText("작동중")
                 self.conveyor_status.setStyleSheet("background-color: #4CAF50; color: white; border-radius: 3px; padding: 5px; font-weight: bold;")
                 self.conveyor_running = True
@@ -210,6 +214,13 @@ class DevicesPage(BasePage):
     def on_pause_conveyor(self):
         """일시정지 버튼 클릭 이벤트 처리"""
         try:
+            if self.current_sorter_state == "pause":
+                self.show_status_message("분류기가 이미 일시정지 상태입니다.")
+                return
+             # running 상태가 아니면 일시정지 불가
+            if self.current_sorter_state == "stopped":
+                self.show_status_message("작동 중인 분류기만 일시정지할 수 있습니다.", is_error=True)
+                return   
             logger.info("분류기 일시정지 요청")
             self.add_log_message(f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 분류기 일시정지 요청")
             
@@ -224,8 +235,9 @@ class DevicesPage(BasePage):
             
             # 데이터 매니저를 통해 서버에 요청 - action 필드 사용
             result = self.data_manager.control_conveyor("pause")
-            
+
             if result and result.get("success", False):
+                self.current_sorter_state = "pause"  # 상태 업데이트
                 self.conveyor_status.setText("일시정지")
                 self.conveyor_status.setStyleSheet("background-color: #FFC107; color: black; border-radius: 3px; padding: 5px; font-weight: bold;")
                 self.conveyor_running = False
@@ -248,6 +260,9 @@ class DevicesPage(BasePage):
     def on_stop_conveyor(self):
         """정지 버튼 클릭 이벤트 처리"""
         try:
+            if self.current_sorter_state == "stopped":
+                self.show_status_message("분류기가 이미 정지 상태입니다.")
+                return
             logger.info("분류기 정지 요청")
             self.add_log_message(f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 분류기 정지 요청")
             
@@ -264,6 +279,7 @@ class DevicesPage(BasePage):
             result = self.data_manager.control_conveyor("stop")
             
             if result and result.get("success", False):
+                self.current_sorter_state = "stopped"  # 상태 업데이트
                 self.conveyor_status.setText("정지")
                 self.conveyor_status.setStyleSheet("background-color: #F44336; color: white; border-radius: 3px; padding: 5px; font-weight: bold;")
                 self.conveyor_running = False
@@ -391,22 +407,27 @@ class DevicesPage(BasePage):
         self.btn_stop.setEnabled(False)
     
     def handleSorterEvent(self, action, payload):
-        """서버로부터 분류기 이벤트 처리 - JSON 스키마에 맞게 수정"""
         try:
             if action == "status_update":
-                # JSON 구조에 맞게 is_running 필드 참조
-                is_running = payload.get("is_running", False)
-                self.conveyor_running = is_running
-                
-                # 컨베이어 상태 업데이트 - 작동중 또는 정지 두 가지 상태만 표시
-                if is_running:
-                    self.conveyor_status.setText("작동중")
-                    self.conveyor_status.setStyleSheet("background-color: #4CAF50; color: white; border-radius: 3px; padding: 5px; font-weight: bold;")
-                else:
-                    self.conveyor_status.setText("정지")
-                    self.conveyor_status.setStyleSheet("background-color: #F44336; color: white; border-radius: 3px; padding: 5px; font-weight: bold;")
-                
-                logger.debug(f"분류기 상태 업데이트: {'가동중' if is_running else '정지'}")
+                state = payload.get("state", "")
+                if state:
+                    self.current_sorter_state = state
+                    logger.debug(f"서버에서 받은 상태: '{state}'")
+                    # state 값에 따라 UI 업데이트
+                    if state == "running":
+                        self.conveyor_status.setText("작동중")
+                        self.conveyor_status.setStyleSheet("background-color: #4CAF50; color: white; border-radius: 3px; padding: 5px; font-weight: bold;")
+                        self.conveyor_running = True
+                    elif state == "pause":
+                        self.conveyor_status.setText("일시정지")
+                        self.conveyor_status.setStyleSheet("background-color: #FFC107; color: black; border-radius: 3px; padding: 5px; font-weight: bold;")
+                        self.conveyor_running = False
+                    else:  # stopped
+                        self.conveyor_status.setText("정지")
+                        self.conveyor_status.setStyleSheet("background-color: #F44336; color: white; border-radius: 3px; padding: 5px; font-weight: bold;")
+                        self.conveyor_running = False
+                        
+                    logger.debug(f"분류기 상태 업데이트: {state}")
             
             elif action == "process_item":
                 # JSON 구조에 맞게 item, qr_code, destination 필드 참조
