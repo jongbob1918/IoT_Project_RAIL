@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.QtCore import Qt, QDate
 import logging
+from datetime import datetime
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -51,15 +52,25 @@ class ExpirationItemCustom(QWidget):
         # 유통기한
         exp_date_str = self.product_data.get('exp', '')
         exp_label = QLabel()
+        
+        # 서버에서 전달된 days_remaining 사용
+        is_expired = self.product_data.get('is_expired', False)
+        days_remaining = self.product_data.get('days_remaining', None)
+        
         if exp_date_str:
             try:
-                exp_date = QDate.fromString(exp_date_str, "yyyy-MM-dd")
-                today = QDate.currentDate()
-                days_diff = exp_date.daysTo(today)
+                # API 응답에서 days_remaining이 있는 경우 사용
+                if days_remaining is not None:
+                    days_diff = days_remaining
+                else:
+                    # 수동으로 계산
+                    exp_date = QDate.fromString(exp_date_str, "yyyy-MM-dd")
+                    today = QDate.currentDate()
+                    days_diff = today.daysTo(exp_date)  # 방향 수정 (미래 날짜면 양수)
                 
-                if days_diff > 0:
+                if days_diff < 0 or is_expired:
                     # 유통기한 경과
-                    exp_label.setText(f"유통기한: D+{days_diff} (경과)")
+                    exp_label.setText(f"유통기한: {abs(days_diff)}일 경과")
                     exp_label.setStyleSheet("color: #F44336;")  # 빨간색
                 elif days_diff == 0:
                     # 오늘 만료
@@ -67,7 +78,7 @@ class ExpirationItemCustom(QWidget):
                     exp_label.setStyleSheet("color: #FF9800;")  # 주황색
                 else:
                     # 임박
-                    exp_label.setText(f"유통기한: D{days_diff} (임박)")
+                    exp_label.setText(f"유통기한: {days_diff}일 남음")
                     exp_label.setStyleSheet("color: #FFC107;")  # 노란색
             except Exception as e:
                 logger.error(f"유통기한 날짜 처리 오류: {str(e)}")
@@ -76,7 +87,7 @@ class ExpirationItemCustom(QWidget):
             exp_label.setText("유통기한: 정보 없음")
         
         # 수량
-        count_label = QLabel(f"수량: {self.product_data.get('quantity', 0)}개")
+        count_label = QLabel(f"수량: {self.product_data.get('quantity', 1)}개")
         
         # 위치
         location_label = QLabel(f"위치: {self.product_data.get('location', '알 수 없음')}")
@@ -93,5 +104,3 @@ class ExpirationItemCustom(QWidget):
         self.setLayout(main_layout)
         
         logger.debug(f"유통기한 아이템 위젯 생성 완료: {self.product_data.get('name', '')}")
-
-    

@@ -121,5 +121,18 @@ class DBManager:
             return self.warehouse_repo.save_target_temperature(warehouse_id, target_temp)
         return False
 
+    def get_expiry_alerts(self, days_threshold: int = 7):
+        """유통기한 경고 목록을 조회"""
+        from . import product_item_repo
+        if self.connected:
+            return product_item_repo.get_expiring_items(days_threshold)
+        return []
+
+    def get_expired_items(self):
+        """유통기한 만료 물품을 조회"""
+        from . import product_item_repo
+        if self.connected:
+            return product_item_repo.get_expired_items()
+        return []
 # 초기 인스턴스 (실제로는 db/__init__.py에서 초기화)
 db_manager = DBManager()

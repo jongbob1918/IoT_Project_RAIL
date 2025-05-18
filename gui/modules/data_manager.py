@@ -294,7 +294,48 @@ class DataManager(QObject):
     def is_server_connected(self):
         """서버 연결 상태 반환 - 모든 페이지가 이 메서드를 사용해야 함"""
         return self._server_connected and self._server_connection and self._server_connection.is_connected
-
+    def _fetch_environment_data(self):
+        """환경/창고 데이터 가져오기"""
+        if not self.is_server_connected() or not self._should_update_data("warehouse"):
+            return
+        
+        try:
+            # 환경 상태 조회 API 호출
+            response = self._server_connection.get_environment_status()
+            
+            # JSON 구조에 맞게 응답 처리
+            if response and response.get("success", False):
+                warehouse_data = response.get("data", {})
+                
+                for warehouse_id, data in warehouse_data.items():
+                    if warehouse_id in self._warehouse_data:
+                        # JSON 구조에 맞게 데이터 맵핑
+                        self._warehouse_data[warehouse_id]["temperature"] = data.get("current_temp", 0.0)
+                        self._warehouse_data[warehouse_id]["target_temp"] = data.get("target_temp", 0.0)
+                        self._warehouse_data[warehouse_id]["status"] = data.get("status", "알 수 없음")
+                        
+                        # used와 capacity 값을 직접 매핑
+                        # 사용량은 이제 실시간으로 계산된 값
+                        self._warehouse_data[warehouse_id]["used"] = data.get("used_capacity", 0)
+                        self._warehouse_data[warehouse_id]["capacity"] = data.get("total_capacity", 100)
+                        
+                        # usage_percent 직접 할당 (계산된 값 사용)
+                        if "utilization_rate" in data:
+                            self._warehouse_data[warehouse_id]["usage_percent"] = int(data.get("utilization_rate", 0) * 100)
+                        else:
+                            # 백분율 계산
+                            capacity = self._warehouse_data[warehouse_id]["capacity"]
+                            used = self._warehouse_data[warehouse_id]["used"]
+                            if capacity > 0:
+                                usage_percent = (used / capacity) * 100
+                                self._warehouse_data[warehouse_id]["usage_percent"] = min(100, int(usage_percent))
+                
+                # 변경 신호 발생
+                self.warehouse_data_changed.emit()
+                logger.debug("환경 데이터 업데이트 완료")
+        
+        except Exception as e:
+            logger.error(f"환경 데이터 가져오기 오류: {str(e)}")
 
     def _poll_server_data(self):
         """실시간 이벤트로 업데이트되지 않는 중요 데이터만 주기적으로 폴링"""
@@ -302,11 +343,11 @@ class DataManager(QObject):
         
         # 데이터 유형별 폴링 주기 설정 (초 단위)
         polling_intervals = {
-            "environment": 120,  # 환경 데이터는 온도 이벤트로 실시간 업데이트되므로 거의 폴링 필요 없음
-            "inventory": 300,    # 재고 데이터는 5분마다
-            "expiry": 600,       # 유통기한 데이터는 10분마다
-            "access_logs": 300,  # 출입 로그는 5분마다
-            "waiting": 300       # 대기 데이터는 5분마다
+            "warehouse": 120,     # 환경/창고 데이터는 2분마다
+            "inventory": 300,     # 재고 데이터는 5분마다
+            "expiry": 600,        # 유통기한 데이터는 10분마다
+            "access_logs": 300,   # 출입 로그는 5분마다
+            "waiting": 300        # 대기 데이터는 5분마다
         }
         
         # 데이터 유형별 마지막 폴링 시간
@@ -317,45 +358,36 @@ class DataManager(QObject):
                 if self.is_server_connected():
                     current_time = time.time()
                     
-                    # 환경 데이터(WebSocket으로 실시간 업데이트)
-                    if current_time - last_poll_time["environment"] >= polling_intervals["environment"]:
-                        self._fetch_environment_data()
-                        last_poll_time["environment"] = current_time
+                    # 환경/창고 데이터
+                    if current_time - last_poll_time["warehouse"] >= polling_intervals["warehouse"]:
+                        self._fetch_environment_data()  # 이 부분 수정
+                        last_poll_time["warehouse"] = current_time
                     
-                    # 재고 데이터(주기적 업데이트 필요)
+                    # 재고 데이터
                     if current_time - last_poll_time["inventory"] >= polling_intervals["inventory"]:
                         self._fetch_inventory_data()
                         last_poll_time["inventory"] = current_time
                     
-                    # 유통기한 데이터(주기적 업데이트 필요)
+                    # 유통기한 데이터
                     if current_time - last_poll_time["expiry"] >= polling_intervals["expiry"]:
                         self._fetch_expiry_data() 
                         last_poll_time["expiry"] = current_time
                     
-                    # 출입 로그(주기적 업데이트)
+                    # 출입 로그
                     if current_time - last_poll_time["access_logs"] >= polling_intervals["access_logs"]:
                         self._fetch_access_logs()
                         last_poll_time["access_logs"] = current_time
                     
-                    # 대기 데이터(주기적 업데이트)
+                    # 대기 데이터
                     if current_time - last_poll_time["waiting"] >= polling_intervals["waiting"]:
                         self._fetch_waiting_data()
                         last_poll_time["waiting"] = current_time
                 
-                # 15초 간격으로 폴링 확인 (짧은 간격으로 체크하되 실제 데이터는 더 긴 간격으로 가져옴)
+                # 15초 간격으로 폴링 확인
                 time.sleep(15)
                 
             except Exception as e:
                 logger.error(f"데이터 폴링 중 오류: {str(e)}")
-                
-                # 오류 정보 저장
-                self._last_error = {
-                    "time": datetime.datetime.now(),
-                    "type": type(e).__name__,
-                    "message": str(e)
-                }
-                
-                # 오류 발생 시 슬립
                 time.sleep(15)
     
     # gui/modules/data_manager.py에 아래 메서드 추가
@@ -364,7 +396,7 @@ class DataManager(QObject):
         if not self.is_server_connected():
             logger.warning(f"{page_name} 페이지 데이터 로드 실패: 서버 연결 안됨")
             return False
-            
+                
         try:
             logger.info(f"{page_name} 페이지 데이터 로드 중...")
             
@@ -378,7 +410,7 @@ class DataManager(QObject):
                 
             elif page_name == "environment":
                 # 환경 페이지 - 환경 데이터만
-                self._fetch_environment_data()
+                self._fetch_environment_data()  # _fetch_environment_data 대신 이 메서드 사용
                 
             elif page_name == "inventory":
                 # 재고 페이지 - 재고 및 대기 데이터
@@ -399,17 +431,17 @@ class DataManager(QObject):
                 
             logger.info(f"{page_name} 페이지 데이터 로드 완료")
             return True
-            
+                
         except Exception as e:
             logger.error(f"{page_name} 페이지 데이터 로드 중 오류: {str(e)}")
-        
-        # 오류 정보 저장
-        self._last_error = {
-            "time": datetime.datetime.now(),
-            "type": type(e).__name__,
-            "message": str(e)
-        }
-        return False
+            
+            # 오류 정보 저장
+            self._last_error = {
+                "time": datetime.datetime.now(),
+                "type": type(e).__name__,
+                "message": str(e)
+            }
+            return False
     def _add_notification_thread_safe(self, message):
         """스레드 안전한 알림 추가 메서드"""
         # 메인 스레드에서 시그널 발생
@@ -454,50 +486,58 @@ class DataManager(QObject):
             return True
             return False
     
-    def _fetch_environment_data(self):
-        """환경 데이터 가져오기"""
-        if not self.is_server_connected() or not self._should_update_data("warehouse"):
+    def _fetch_inventory_data(self):
+        """재고 데이터 가져오기"""
+        if not self.is_server_connected() or not self._should_update_data("inventory"):
             return
         
         try:
-            # 환경 상태 조회 API 호출
-            response = self._server_connection.get_environment_status()
+            # 재고 상태 조회 API 호출
+            response = self._server_connection.get_inventory_status()
             
-            # JSON 구조에 맞게 응답 처리
-            if response and response.get("success", False):
-                warehouse_data = response.get("data", {})
+            # 디버깅: 전체 응답 로깅
+            logger.info(f"서버에서 받은 재고 상태 데이터: {response}")
+            
+            # 응답 처리
+            if response and "success" in response and response["success"]:
+                data = response.get("data", {})
                 
-                for warehouse_id, data in warehouse_data.items():
+                # 창고별 사용량 업데이트
+                for warehouse_id, warehouse_data in data.get("warehouses", {}).items():
                     if warehouse_id in self._warehouse_data:
-                        # JSON 구조에 맞게 데이터 맵핑
-                        self._warehouse_data[warehouse_id]["temperature"] = data.get("current_temp", 0.0)
-                        self._warehouse_data[warehouse_id]["target_temp"] = data.get("target_temp", 0.0)
-                        self._warehouse_data[warehouse_id]["status"] = data.get("status", "알 수 없음")
-                        self._warehouse_data[warehouse_id]["used"] = data.get("used", 0)
-                        self._warehouse_data[warehouse_id]["capacity"] = data.get("capacity", 100)
+                        # 디버깅: 창고 데이터 로깅
+                        logger.debug(f"창고 {warehouse_id} 데이터: {warehouse_data}")
                         
-                        # usage_percent 계산
-                        if "usage_percent" in data:
-                            self._warehouse_data[warehouse_id]["usage_percent"] = data.get("usage_percent", 0)
-                        elif self._warehouse_data[warehouse_id]["capacity"] > 0:
-                            used = self._warehouse_data[warehouse_id]["used"]
+                        # 다양한 필드명 지원 (used_capacity 또는 used)
+                        self._warehouse_data[warehouse_id]["used"] = warehouse_data.get("used_capacity", warehouse_data.get("used", 0))
+                        self._warehouse_data[warehouse_id]["capacity"] = warehouse_data.get("total_capacity", warehouse_data.get("capacity", 100))
+                        
+                        # 백분율 계산 - 다양한 필드명 지원
+                        if "utilization_rate" in warehouse_data:
+                            # utilization_rate는 0.0~1.0 범위의 값이므로 100을 곱해야 함
+                            utilization_rate = warehouse_data.get("utilization_rate", 0)
+                            self._warehouse_data[warehouse_id]["usage_percent"] = min(100, int(utilization_rate * 100))
+                        elif "usage_percent" in warehouse_data:
+                            # 이미 0~100 범위인 경우
+                            self._warehouse_data[warehouse_id]["usage_percent"] = min(100, int(warehouse_data.get("usage_percent", 0)))
+                        else:
+                            # 직접 계산
                             capacity = self._warehouse_data[warehouse_id]["capacity"]
-                            self._warehouse_data[warehouse_id]["usage_percent"] = min(100, int((used / capacity) * 100))
+                            used = self._warehouse_data[warehouse_id]["used"]
+                            if capacity > 0:
+                                usage_percent = int((used / capacity) * 100)
+                                self._warehouse_data[warehouse_id]["usage_percent"] = min(100, usage_percent)
+                
+                # 디버깅: 업데이트된 로컬 데이터 로깅
+                logger.info(f"업데이트된 창고 데이터: {self._warehouse_data}")
                 
                 # 변경 신호 발생
                 self.warehouse_data_changed.emit()
-                logger.debug("환경 데이터 업데이트 완료")
-            
+                self.inventory_data_changed.emit()
+                logger.debug("재고 데이터 업데이트 완료 - 신호 발생됨")
+                
         except Exception as e:
-            logger.error(f"환경 데이터 가져오기 오류: {str(e)}")
-            
-            # 오류 정보 저장
-            self._last_error = {
-                "time": datetime.datetime.now(),
-                "type": type(e).__name__,
-                "message": str(e)
-            }
-    # data_manager.py에 추가할 메서드
+            logger.error(f"재고 데이터 가져오기 오류: {str(e)}")
 
     def update_fan_status(self, warehouse_id, fan_mode, fan_speed):
         """팬 상태 정보 업데이트

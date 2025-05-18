@@ -35,11 +35,8 @@ class ExpirationPage(BasePage):
         self.data_manager = data_manager if data_manager else DataManager.get_instance()
         self.set_data_manager(self.data_manager)  # 부모 클래스 메서드 호출
         
-        # 날짜 범위 초기 설정 (현재 날짜 기준 전/후 30일)
-        self.setup_date_range()
-        
-        # 검색 버튼 이벤트 연결
-        self.connect_buttons()
+        # 날짜 범위 UI 숨기기
+        self.horizontalLayoutWidget.hide()
         
         # 더 많은 항목 버튼 숨기기
         if hasattr(self, 'btnMoreItems'):
@@ -50,9 +47,6 @@ class ExpirationPage(BasePage):
         
         # 아이템 데이터 목록
         self.expiry_items = []
-        
-        # 버튼 스타일 설정
-        self.setup_button_styles()
         
         # 데이터 변경 이벤트 연결
         self.connect_data_signals()
@@ -69,40 +63,9 @@ class ExpirationPage(BasePage):
             font.setBold(True)
             font.setWeight(QFont.Weight.Bold)
             label.setFont(font)
-    
-    def setup_date_range(self):
-        """날짜 범위 초기 설정"""
-        today = QDate.currentDate()
-        self.dateFrom.setDate(today.addDays(-30))
-        self.dateTo.setDate(today.addDays(30))
-    
-    def connect_buttons(self):
-        """버튼 이벤트 연결"""
-        self.btnSearch.clicked.connect(self.search_expired_items)
-    
-    def setup_scroll_layout(self):
-        """스크롤 영역 레이아웃 설정"""
-        self.scroll_layout = QVBoxLayout(self.scrollAreaWidgetContents)
-        self.scroll_layout.setContentsMargins(10, 10, 10, 10)
-        self.scroll_layout.setSpacing(20)
-        self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-    
-    def setup_button_styles(self):
-        """버튼 스타일 설정"""
-        # 검색 버튼 스타일
-        self.btnSearch.setStyleSheet("""
-            QPushButton {
-                background-color: #4285F4; 
-                color: white; 
-                border-radius: 3px; 
-                padding: 5px;
-            }
-            QPushButton:pressed {
-                background-color: #3367D6;
-                padding-left: 4px;
-                padding-top: 4px;
-            }
-        """)
+            
+        # 스크롤 영역 위치 조정 (날짜 필터 숨겼으므로)
+        self.scrollArea.setGeometry(10, 50, 841, 561)
     
     def connect_data_signals(self):
         """데이터 변경 이벤트 연결"""
@@ -120,6 +83,13 @@ class ExpirationPage(BasePage):
         """유통기한 데이터 변경 이벤트 처리"""
         # 데이터가 변경되었으므로 UI 갱신
         self.search_expired_items()
+    
+    def setup_scroll_layout(self):
+        """스크롤 영역 레이아웃 설정"""
+        self.scroll_layout = QVBoxLayout(self.scrollAreaWidgetContents)
+        self.scroll_layout.setContentsMargins(10, 10, 10, 10)
+        self.scroll_layout.setSpacing(20)
+        self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
     
     def clear_items_layout(self):
         """기존 아이템 위젯을 모두 제거합니다."""
@@ -177,25 +147,21 @@ class ExpirationPage(BasePage):
             self.show_status_message("아이템 표시 오류", is_error=True)
 
     def search_expired_items(self):
-        """날짜 범위 내의 유통기한 경과/임박 물품을 검색합니다."""
+        """유통기한 경과/임박 물품을 검색합니다."""
         try:
-            # 날짜 범위 가져오기
-            from_date = self.dateFrom.date().toString("yyyy-MM-dd")
-            to_date = self.dateTo.date().toString("yyyy-MM-dd")
-            
-            # 데이터 로드
-            self.fetch_expiry_items(from_date, to_date)
+            # 날짜 범위 없이 데이터 로드
+            self.fetch_expiry_items()
         except Exception as e:
             logger.error(f"유통기한 검색 오류: {str(e)}")
             self.handle_data_fetch_error("유통기한 검색", str(e))
 
-    def fetch_expiry_items(self, from_date, to_date):
+    def fetch_expiry_items(self):
         """유통기한 임박/경과 물품 데이터를 요청합니다."""
         try:
             # 기존 데이터 초기화
             self.clear_items_layout()
             
-            # 서버 연결 상태 확인 - data_manager로 위임
+            # 서버 연결 상태 확인
             if not self.data_manager.is_server_connected():
                 self.show_connection_error_message()
                 return
@@ -241,8 +207,6 @@ class ExpirationPage(BasePage):
                 self.handle_api_exception("유통기한 데이터 조회", e)
                 
                 # 오류 메시지 표시
-                self.handle_api_exception("데이터 가져오기 오류", e)
-                # UI에 오류 메시지 표시
                 error_label = QLabel("데이터를 가져올 수 없습니다. 연결 상태를 확인하세요.")
                 error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 error_label.setStyleSheet("font-size: 14px; color: #F44336;")
@@ -262,10 +226,11 @@ class ExpirationPage(BasePage):
         # 필요한 필드 추출 및 변환
         item = {
             "id": api_item.get("id", ""),
-            "name": api_item.get("product_name", ""),  # product_name으로 필드명 변경
+            "name": api_item.get("name", ""),  # product_name이 아닌 name 필드 사용
             "exp": api_item.get("exp", ""),
+            "days_remaining": api_item.get("days_remaining", None),  # 서버에서 계산된 days_remaining 포함
             "quantity": api_item.get("quantity", 1),
-            "location": f"{api_item.get('warehouse_id', '')}창고",  # warehouse_id로 필드명 변경
+            "location": f"{api_item.get('warehouse_id', '')}창고",
             "is_expired": is_expired
         }
         return item

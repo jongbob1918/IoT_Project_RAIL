@@ -101,17 +101,29 @@ class ChartFrame(QWidget):
                 warehouse_data = self.data_manager.get_warehouse_data()
                 distribution = {}
                 
+                # 디버깅: 차트에 사용되는 데이터 로깅
+                logger.info(f"차트용 창고 데이터: {warehouse_data}")
+                
+                has_data = False
                 for wh_id, data in warehouse_data.items():
                     # 창고 이름과 물품 수량으로 변환
-                    distribution[f"{self.get_warehouse_name(wh_id)} ({wh_id})"] = data["used"]
+                    used_count = data.get("used", 0)
+                    distribution[f"{self.get_warehouse_name(wh_id)} ({wh_id})"] = used_count
+                    if used_count > 0:
+                        has_data = True
                 
-                # 데이터가 있으면 반환
-                if distribution and sum(distribution.values()) > 0:
+                # 디버깅: 최종 분포 데이터 로깅
+                logger.info(f"창고별 분포 데이터: {distribution}, 데이터 있음: {has_data}")
+                
+                # 데이터가 하나라도 있으면 반환
+                if has_data:
                     return distribution
+                
         except Exception as e:
             logger.error(f"창고별 물품 분포 데이터 가져오기 오류: {str(e)}")
         
         # 서버 연결이 없거나 데이터가 없는 경우
+        logger.warning("유효한 창고 분포 데이터 없음 - 기본값 사용")
         return {"데이터 없음": 1}
     
     def get_warehouse_name(self, warehouse_id):
@@ -383,18 +395,18 @@ class InventoryListDialog(QDialog):
         self.combo_warehouse.addItem("냉장 창고 (B)", "B")
         self.combo_warehouse.addItem("상온 창고 (C)", "C")
         
-        # 날짜 필터
-        date_from_label = QLabel("시작일:")
-        self.date_from = QDateEdit()
-        self.date_from.setCalendarPopup(True)
-        self.date_from.setDisplayFormat("yyyy/MM/dd")
-        self.date_from.setDate(QDate.currentDate().addDays(-7))
-        
-        date_to_label = QLabel("종료일:")
-        self.date_to = QDateEdit()
-        self.date_to.setCalendarPopup(True)
-        self.date_to.setDisplayFormat("yyyy/MM/dd")
-        self.date_to.setDate(QDate.currentDate())
+        # 날짜 필터 제거 - 이 부분 주석 처리 또는 삭제
+        # date_from_label = QLabel("시작일:")
+        # self.date_from = QDateEdit()
+        # self.date_from.setCalendarPopup(True)
+        # self.date_from.setDisplayFormat("yyyy/MM/dd")
+        # self.date_from.setDate(QDate.currentDate().addDays(-7))
+        # 
+        # date_to_label = QLabel("종료일:")
+        # self.date_to = QDateEdit()
+        # self.date_to.setCalendarPopup(True)
+        # self.date_to.setDisplayFormat("yyyy/MM/dd")
+        # self.date_to.setDate(QDate.currentDate())
         
         # 필터 리셋 버튼
         self.btn_reset = QPushButton("필터 초기화")
@@ -406,12 +418,13 @@ class InventoryListDialog(QDialog):
         filter_layout.addWidget(self.btn_search)
         filter_layout.addWidget(warehouse_label)
         filter_layout.addWidget(self.combo_warehouse)
-        filter_layout.addWidget(date_from_label)
-        filter_layout.addWidget(self.date_from)
-        filter_layout.addWidget(date_to_label)
-        filter_layout.addWidget(self.date_to)
+        # 날짜 필터 관련 위젯 제거
+        # filter_layout.addWidget(date_from_label)
+        # filter_layout.addWidget(self.date_from)
+        # filter_layout.addWidget(date_to_label)
+        # filter_layout.addWidget(self.date_to)
         filter_layout.addWidget(self.btn_reset)
-        
+    
         # 테이블 위젯
         self.setup_table()
         
@@ -458,11 +471,12 @@ class InventoryListDialog(QDialog):
         
         main_layout.addLayout(button_layout)
     
+    # inventory.py 파일에서 setup_table 함수 수정
     def setup_table(self):
         """테이블 위젯 설정"""
         self.table_inventory = QTableWidget()
-        self.table_inventory.setColumnCount(5)
-        self.table_inventory.setHorizontalHeaderLabels(["상품아이디", "상품명", "입고일", "창고", "수량"])
+        self.table_inventory.setColumnCount(4)  # 수량 컬럼 제거하여 4개로 변경
+        self.table_inventory.setHorizontalHeaderLabels(["상품아이디", "상품명", "입고일", "창고"])
         self.table_inventory.setAlternatingRowColors(True)
         self.table_inventory.setStyleSheet("""
             QTableWidget {
@@ -479,10 +493,13 @@ class InventoryListDialog(QDialog):
         
         # 칼럼 너비 설정
         self.table_inventory.setColumnWidth(0, 120)  # 상품아이디
-        self.table_inventory.setColumnWidth(1, 200)  # 상품명
-        self.table_inventory.setColumnWidth(2, 120)  # 입고일
+        self.table_inventory.setColumnWidth(1, 270)  # 상품명
+        self.table_inventory.setColumnWidth(2, 200)  # 입고일
         self.table_inventory.setColumnWidth(3, 80)   # 창고
-        self.table_inventory.setColumnWidth(4, 80)   # 수량
+        
+        # 스크롤바 설정 추가
+        self.table_inventory.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.table_inventory.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     
     def fetch_inventory_data(self):
         """서버에서 재고 데이터 가져오기"""
@@ -545,32 +562,26 @@ class InventoryListDialog(QDialog):
         """API 예외 표시"""
         ErrorHandler.show_error_message(title, f"{title} 중 오류: {str(exception)}")
     
+    # inventory.py 파일에서 apply_search_filter 함수 수정
     def apply_search_filter(self):
         """검색 및 필터 적용"""
         try:
             # 필터 조건 가져오기
             search_text = self.input_search.text().lower()
-            from_date = self.date_from.date()
-            to_date = self.date_to.date()
             selected_warehouse = self.combo_warehouse.currentData()
             
             # 필터링
             self.filtered_items = []
             for item in self.inventory_items:
-                # 검색어 필터
+                # 검색어 필터 - 필드명 변경
                 if search_text and not (
-                    search_text in item.get("product_name", "").lower() or
-                    search_text in item.get("sku", "").lower()
+                    search_text in str(item.get("product_name", "")).lower() or  # 상품명
+                    search_text in str(item.get("id", "")).lower()              # 상품아이디
                 ):
                     continue
                 
-                # 날짜 필터
-                item_date = QDate.fromString(item.get("received_date", ""), "yyyy-MM-dd")
-                if not (from_date <= item_date <= to_date):
-                    continue
-                
-                # 창고 필터
-                if selected_warehouse != "all" and item.get("warehouse", "") != selected_warehouse:
+                # 창고 필터 - 필드명 변경
+                if selected_warehouse != "all" and item.get("warehouse_id", "") != selected_warehouse:
                     continue
                 
                 # 모든 필터 통과
@@ -596,16 +607,16 @@ class InventoryListDialog(QDialog):
         except Exception as e:
             logger.error(f"검색 필터 적용 오류: {str(e)}")
             ErrorHandler.show_warning_message("검색 오류", f"필터 적용 중 오류가 발생했습니다: {str(e)}")
-    
+
     def reset_search_filter(self):
         """검색 및 필터 초기화"""
         try:
             # 검색어 초기화
             self.input_search.clear()
             
-            # 날짜 필터 초기화
-            self.date_from.setDate(QDate.currentDate().addDays(-7))
-            self.date_to.setDate(QDate.currentDate())
+            # 날짜 필터 초기화 부분 제거
+            # self.date_from.setDate(QDate.currentDate().addDays(-7))
+            # self.date_to.setDate(QDate.currentDate())
             
             # 창고 필터 초기화
             self.combo_warehouse.setCurrentIndex(0)  # 전체 선택
@@ -632,6 +643,7 @@ class InventoryListDialog(QDialog):
         self.btn_prev_page.setEnabled(self.current_page > 1)
         self.btn_next_page.setEnabled(self.current_page < total_pages)
     
+        # inventory.py 파일에서 update_table 함수 수정
     def update_table(self):
         """테이블 데이터 업데이트"""
         try:
@@ -647,12 +659,11 @@ class InventoryListDialog(QDialog):
                 row = self.table_inventory.rowCount()
                 self.table_inventory.insertRow(row)
                 
-                # 데이터 설정 (순서 변경됨)
-                self.table_inventory.setItem(row, 0, QTableWidgetItem(item.get("sku", "")))           # 상품아이디
-                self.table_inventory.setItem(row, 1, QTableWidgetItem(item.get("product_name", "")))  # 상품명
-                self.table_inventory.setItem(row, 2, QTableWidgetItem(item.get("received_date", ""))) # 입고일
-                self.table_inventory.setItem(row, 3, QTableWidgetItem(item.get("warehouse", "")))     # 창고
-                self.table_inventory.setItem(row, 4, QTableWidgetItem(str(item.get("quantity", 0))))  # 수량
+                # 데이터 설정 - 필드명 변경
+                self.table_inventory.setItem(row, 0, QTableWidgetItem(str(item.get("id", ""))))           # 상품아이디
+                self.table_inventory.setItem(row, 1, QTableWidgetItem(str(item.get("product_name", "")))) # 상품명
+                self.table_inventory.setItem(row, 2, QTableWidgetItem(str(item.get("entry_time", ""))))   # 입고일
+                self.table_inventory.setItem(row, 3, QTableWidgetItem(str(item.get("warehouse_id", "")))) # 창고
                 
                 # 행 색상 설정 (조건에 따라)
                 if item.get("is_expiring_soon", False):
@@ -660,15 +671,9 @@ class InventoryListDialog(QDialog):
                         cell = self.table_inventory.item(row, col)
                         if cell:
                             cell.setBackground(QColor(255, 243, 224))  # 유통기한 임박: 연한 주황색
-                
-                elif item.get("is_low_stock", False):
-                    for col in range(self.table_inventory.columnCount()):
-                        cell = self.table_inventory.item(row, col)
-                        if cell:
-                            cell.setBackground(QColor(232, 234, 246))  # 재고 부족: 연한 푸른색
         except Exception as e:
             logger.error(f"테이블 업데이트 오류: {str(e)}")
-            self.handle_api_exception("테이블 업데이트 오류", e)    
+            self.handle_api_exception("테이블 업데이트 오류", e)
             
     def prev_page(self):
         """이전 페이지로 이동"""

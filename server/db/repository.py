@@ -33,7 +33,7 @@ class WarehouseRepository(BaseRepository):
         try:
             query = """
                 SELECT id, warehouse_type, min_temp, max_temp, target_temp, 
-                       capacity, used_capacity 
+                    capacity
                 FROM warehouse
             """
             result = self.db.execute_dict_query(query)
@@ -45,7 +45,6 @@ class WarehouseRepository(BaseRepository):
         except Exception as e:
             self._log_error("창고 정보 조회 오류", e)
             return []
-    
     def get_by_id(self, warehouse_id: str) -> Optional[Dict]:
         """ID로 창고 정보 조회"""
         try:
@@ -435,8 +434,8 @@ class ProductItemRepository(BaseRepository):
     def remove_item(self, item_id: str) -> bool:
         """제품 아이템 제거"""
         try:
-            # 아이템 정보 가져오기 (창고 ID 필요)
-            item_query = "SELECT warehouse_id FROM product_item WHERE id = %s"
+            # 아이템 정보 가져오기 (로깅 목적)
+            item_query = "SELECT warehouse_id, product_id FROM product_item WHERE id = %s"
             item_result = self.db.execute_query(item_query, (item_id,))
             
             if not item_result:
@@ -444,14 +443,15 @@ class ProductItemRepository(BaseRepository):
                 return False
             
             warehouse_id = item_result[0][0]
+            product_id = item_result[0][1]
             
             # 아이템 삭제
             query = "DELETE FROM product_item WHERE id = %s"
             affected = self.db.execute_update(query, (item_id,))
             
             if affected > 0:
-                # 창고 용량 업데이트
-                self._update_warehouse_capacity(warehouse_id)
+                # 로그 기록: used_capacity를 업데이트할 필요 없음 (실시간 계산으로 변경)
+                self.logger.info(f"제품 아이템 제거 성공: ID={item_id}, 창고={warehouse_id}, 제품={product_id}")
                 return True
             else:
                 return False
@@ -460,28 +460,33 @@ class ProductItemRepository(BaseRepository):
             self._log_error(f"제품 아이템 제거 오류 (ID: {item_id})", e)
             return False
     
-    def _update_warehouse_capacity(self, warehouse_id: str) -> bool:
-        """창고 사용 용량 업데이트 (내부 메서드)"""
+    def get_warehouse_usage(self, warehouse_id: str = None) -> Dict[str, int]:
+        """창고별 사용량 계산 (DB에서 실시간 조회)"""
         try:
-            # 창고내 아이템 수 계산
-            count_query = "SELECT COUNT(*) FROM product_item WHERE warehouse_id = %s"
-            count_result = self.db.execute_query(count_query, (warehouse_id,))
+            query = """
+                SELECT warehouse_id, COUNT(*) as count
+                FROM product_item
+            """
+            params = []
             
-            if not count_result:
-                return False
+            if warehouse_id:
+                query += " WHERE warehouse_id = %s"
+                params.append(warehouse_id)
                 
-            item_count = count_result[0][0]
+            query += " GROUP BY warehouse_id"
             
-            # 창고 용량 업데이트
-            update_query = "UPDATE warehouse SET used_capacity = %s WHERE id = %s"
-            affected = self.db.execute_update(update_query, (item_count, warehouse_id))
+            result = self.db.execute_dict_query(query, tuple(params) if params else None)
             
-            return affected > 0
+            usage = {}
+            if result:
+                for row in result:
+                    usage[row["warehouse_id"]] = row["count"]
+                    
+            return usage
             
         except Exception as e:
-            self._log_error(f"창고 용량 업데이트 오류 (ID: {warehouse_id})", e)
-            return False
-
+            self._log_error(f"창고 사용량 계산 오류", e)
+            return {}
 
 class EmployeeRepository(BaseRepository):
     """직원 정보 관리 리포지토리"""

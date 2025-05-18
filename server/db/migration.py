@@ -159,14 +159,13 @@ class DatabaseMigration:
             table_sql = {
                 "warehouse": """
                     CREATE TABLE IF NOT EXISTS `warehouse` (
-                      `id` varchar(20) NOT NULL,
-                      `warehouse_type` varchar(50) DEFAULT NULL,
-                      `min_temp` float DEFAULT NULL,
-                      `max_temp` float DEFAULT NULL,
-                      `target_temp` float DEFAULT NULL,
-                      `capacity` int DEFAULT NULL,
-                      `used_capacity` int DEFAULT NULL,
-                      PRIMARY KEY (`id`)
+                    `id` varchar(20) NOT NULL,
+                    `warehouse_type` varchar(50) DEFAULT NULL,
+                    `min_temp` float DEFAULT NULL,
+                    `max_temp` float DEFAULT NULL,
+                    `target_temp` float DEFAULT NULL,
+                    `capacity` int DEFAULT NULL,
+                    PRIMARY KEY (`id`)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
                 """,
                 "product": """
@@ -299,9 +298,9 @@ class DatabaseMigration:
             # 창고 데이터 삽입
             warehouse_sql = """
                 INSERT INTO `warehouse` VALUES
-                ('A', '냉동', -30, -18, -22, 16, 0),
-                ('B', '냉장', 0, 10, 5, 16, 0),
-                ('C', '상온', 15, 25, 20, 16, 0);
+                ('A', '냉동', -30, -18, -22, 100),
+                ('B', '냉장', 0, 10, 5, 100),
+                ('C', '상온', 15, 25, 20, 100);
             """
             
             # self.db 객체 사용
