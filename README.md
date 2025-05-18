@@ -1,6 +1,9 @@
 [![표지](https://private-user-images.githubusercontent.com/204112513/444071928-48721f79-2985-49a5-b865-95c53c58e082.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDc1NDc5OTYsIm5iZiI6MTc0NzU0NzY5NiwicGF0aCI6Ii8yMDQxMTI1MTMvNDQ0MDcxOTI4LTQ4NzIxZjc5LTI5ODUtNDlhNS1iODY1LTk1YzUzYzU4ZTA4Mi5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUwNTE4JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MDUxOFQwNTU0NTZaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT0wZDc5YTE3NGU2ZTg2NWNlNTljYmNlMDM3ZjMxZjYxMDM5NDdlZjAyM2U4YzBjMmNjM2FkYWQ1ZTdjZWMyMGFkJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.pdH1i4lu5KU8Y5WkRvPbpVa_hOjj9JbCHrZkVpAbmus)](https://docs.google.com/presentation/d/1FzKztQ5YNb_TZpFh6WQ7UyEFaeflS6z4hu515bo7t1Q/edit?slide=id.p#slide=id.p)
 [ㄴ 클릭시 PPT 이동](https://docs.google.com/presentation/d/1FzKztQ5YNb_TZpFh6WQ7UyEFaeflS6z4hu515bo7t1Q/edit?slide=id.p#slide=id.p)
 
+## 주제 : 물류 자동화 시스템 
+![예시 이미지](https://private-user-images.githubusercontent.com/204112513/444864442-70b6aa95-32b6-4778-b198-629e9ff7317a.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDc1NTI5NzUsIm5iZiI6MTc0NzU1MjY3NSwicGF0aCI6Ii8yMDQxMTI1MTMvNDQ0ODY0NDQyLTcwYjZhYTk1LTMyYjYtNDc3OC1iMTk4LTYyOWU5ZmY3MzE3YS5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUwNTE4JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MDUxOFQwNzE3NTVaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT01Y2IyOTA5ZGFkYjAyMzU5OTkwODU4YjZiN2Y3ZjE2NzJjODc3NTQxZWIzMGE4ZjUwYjg1ZDAwOTRkYWY2NmU1JlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.CkyHzvbYFT5h3cvXzqJftt1KR5TgTC9wivIgE8QJojk)
+
 ### 목차
 **00** 팀 소개 <br/>
 **01** 프로젝트 소개 <br/>
@@ -9,7 +12,7 @@
 **04** 프로젝트 결과 <br/>
 마무리 
 # 00. 팀 소개
-## 주제 : 물류 자동화 시스템 
+
 ## 팀명 : RAIL
 ![로고](https://private-user-images.githubusercontent.com/204112513/444460369-8f8feda1-c146-4f99-8d42-3796149e6753.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDc1NDc5OTYsIm5iZiI6MTc0NzU0NzY5NiwicGF0aCI6Ii8yMDQxMTI1MTMvNDQ0NDYwMzY5LThmOGZlZGExLWMxNDYtNGY5OS04ZDQyLTM3OTYxNDllNjc1My5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUwNTE4JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MDUxOFQwNTU0NTZaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT1mODllYjBiOGIxMzVjMjZhYjM1ZjgxMWRiNzc4NjNiNWM1MjNkYzcxNzFiZjRkMjljYWEyMTdlNGNhMDBlNTQ0JlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.MEALZ9ZPStF3KFT2_HG4fHLfVYhzOL9bgU9akSfKjIA)
 
@@ -41,9 +44,9 @@
 ![주제 선정 배경에 대해서 설명해주세요.](https://private-user-images.githubusercontent.com/204112513/444448164-5ad439c4-b119-49da-a3a2-a7d28271f93d.jpg?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3NDc1NDc5OTYsIm5iZiI6MTc0NzU0NzY5NiwicGF0aCI6Ii8yMDQxMTI1MTMvNDQ0NDQ4MTY0LTVhZDQzOWM0LWIxMTktNDlkYS1hM2EyLWE3ZDI4MjcxZjkzZC5qcGc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1BS0lBVkNPRFlMU0E1M1BRSzRaQSUyRjIwMjUwNTE4JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI1MDUxOFQwNTU0NTZaJlgtQW16LUV4cGlyZXM9MzAwJlgtQW16LVNpZ25hdHVyZT1mYzUwMDk0NDc5ZWE3ZmQyZGFjMmZhN2NkZDMzMDk1MWI5MzdiOTkwZjVkYmRjM2Y2OGJiZjZiMmRkNDkzYTAzJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCJ9.JwzMo2O0Hz5s7f58jZKAmDNHVCXiKFdAJQQLHxqcGUM)
 
 물류 자동화 시스템을 주제로 선정한 이유는 크게 3가지가 있습니다. <br/>
-첫 번째는 온라인 쇼핑이 증가하고 오프라인 매장 수가 감소하면서 전자상거래가 증가하면서, 해당 주제에 수요가 증가했습니다. <br/>
-두 번째는 쿠팡이나, 여러 소셜 커머스에서 시행하는 당일 배송으로 인해 짧은 배송시간 수요가 증가했습니다. <br/>
-세 번째는 각종 기술, 로봇, IoT, 인공지능 등의 발달로 물류 자동화 시스템의 접근성이 높아졌습니다. <br/>
+**첫 번째**는 온라인 쇼핑이 증가하고 오프라인 매장 수가 감소하면서 **전자상거래**가 증가하면서, 해당 주제에 수요가 증가했습니다. <br/>
+**두 번째**는 쿠팡이나, 여러 소셜 커머스에서 시행하는 당일 배송으로 인해 **짧은 배송시간 수요**가 증가했습니다. <br/>
+**세 번째**는 각종 기술, 로봇, IoT, 인공지능 등의 발달로 **물류 자동화 시스템의 접근성**이 높아졌습니다. <br/>
 이로 인해 물류 자동화 시스템은 앞으로 고성장할 서비스로 판단되었고 사업성이 좋은 아이템으로 생각되어 해당 주제를 선정하게 되었습니다.
 
 ## 사용자 요구사항 (User Requirements)
