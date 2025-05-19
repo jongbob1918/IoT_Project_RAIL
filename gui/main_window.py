@@ -76,7 +76,7 @@ class WindowClass(QMainWindow):
         # config.py 파일의 설정과 일치하도록 서버 호스트 및 포트 설정
         #server_host = "192.168.2.2"  # config에서는 127.0.0.1으로 설정
         server_host = "0.0.0.0"
-        server_port = 8000         # config의 SERVER_PORT와 일치
+        server_port = 7999         # config의 SERVER_PORT와 일치
         
         
         # 서버 연결 객체 생성

@@ -15,12 +15,12 @@ logging.basicConfig(
 
 # ===== 서버 설정 =====
 SERVER_HOST = "0.0.0.0"
-SERVER_PORT = 8000
-DEBUG = False
+SERVER_PORT = 7999
+DEBUG = False\
 
 # ===== UDP 설정 =====
 UDP_HOST = "0.0.0.0"  # 모든 인터페이스에서 수신
-UDP_PORT = 9000
+UDP_PORT = 8999
 
 # 데이터베이스 설정
 DB_HOST = "localhost"
