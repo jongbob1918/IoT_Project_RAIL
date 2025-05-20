@@ -228,7 +228,7 @@ class WindowClass(QMainWindow):
                         if min_temp <= temperature <= max_temp:
                             self.data_manager._warehouse_data[warehouse_id]["status"] = "정상"
                         else:
-                            self.data_manager._warehouse_data[warehouse_id]["status"] = "주의"
+                            self.data_manager._warehouse_data[warehouse_id]["status"] = "경고"
                         self.data_manager.warehouse_data_changed.emit()
             elif category == "inventory" and hasattr(self.page_inventory, "handleInventoryEvent"):
                 # 인벤토리 이벤트 처리 (필요시 구현)

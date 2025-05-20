@@ -481,7 +481,7 @@ class EnvironmentPage(BasePage):
                 warning = payload.get("warning", False)
                 
                 if wh_id in self.warehouses:
-                    status = "경고" if warning else "정상"  # "주의"를 "경고"로 변경
+                    status = "경고" if warning else "정상"  
                     self.warehouses[wh_id]["status"] = status
                     logger.debug(f"환경 이벤트: 창고 {wh_id} 경고 상태 - {warning}")
                     self.update_ui()

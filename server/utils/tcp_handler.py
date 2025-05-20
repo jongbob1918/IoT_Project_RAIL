@@ -3,6 +3,7 @@ import threading
 import logging
 import time
 from typing import Dict, Callable, Any, Optional, List
+from config import CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class TCPHandler:
         self.clients = {}  # 클라이언트 소켓 저장 (클라이언트 ID: 정보)
         self.client_lock = threading.Lock()
         self.running = False
-        
+        self.auto_device_mapping = CONFIG.get('AUTO_DEVICE_MAPPING', {})
         # 메시지 버퍼 (클라이언트 ID를 키로 사용)
         self.message_buffers = {}
         
@@ -105,10 +106,17 @@ class TCPHandler:
                 
                 # 클라이언트 정보 저장
                 with self.client_lock:
+                    # 여기에 자동 매핑 코드 추가
+                    ip_address = address[0]
+                    device_id = None
+                    if ip_address in self.auto_device_mapping:
+                        device_id = self.auto_device_mapping[ip_address]
+                        logger.info(f"자동 디바이스 등록: {device_id} (클라이언트: {client_id})")
+                    
                     self.clients[client_id] = {
                         'socket': client_socket,
                         'address': address,
-                        'device_id': None,
+                        'device_id': device_id,  # None 대신 자동 매핑된 device_id 사용
                         'last_activity': time.time()
                     }
                     # 메시지 버퍼 초기화
@@ -227,6 +235,7 @@ class TCPHandler:
                 # 클라이언트-디바이스 매핑 업데이트
                 with self.client_lock:
                     if client_id in self.clients:
+                        # 이미 ID가 설정되어 있지 않은 경우에만 업데이트
                         if self.clients[client_id]['device_id'] is None:
                             self.clients[client_id]['device_id'] = device_type
                             logger.info(f"디바이스 등록: {device_type} (클라이언트: {client_id})")
@@ -243,15 +252,19 @@ class TCPHandler:
         try:
             handler_called = False
             
+            # 원본 메시지 전체 재구성
+            original_message = f"{raw_device_id}{message_type}{content}"
+            
             # 1. 매핑된 디바이스 ID와 메시지 타입으로 핸들러 찾기
             if device_id in self.device_handlers and message_type in self.device_handlers[device_id]:
                 logger.debug(f"메시지 수신 ({raw_device_id}{message_type}): {content}")
                 
-                # 핸들러 호출
+                # 핸들러 호출 - 원본 메시지 전체 전달
                 self.device_handlers[device_id][message_type]({
                     'device_type': raw_device_id,
                     'message_type': message_type,
-                    'content': content
+                    'content': content,
+                    'raw': original_message  # 원본 메시지 전체 추가
                 })
                 handler_called = True
             

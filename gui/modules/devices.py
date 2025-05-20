@@ -271,6 +271,31 @@ class DevicesPage(BasePage):
                 self.show_status_message("서버에 연결되어 있지 않습니다.", is_error=True)
                 return
             
+            # 대기 물품 확인 - 현재 상태 가져오기
+            sorting_status = self.data_manager.get_sorting_status()
+            if sorting_status and sorting_status.get("success", False):
+                status_data = sorting_status.get("data", {}).get("status", {})
+                items_waiting = status_data.get("items_waiting", 0)
+                
+                # 대기 물품이 있으면 경고 팝업 표시 후 정지하지 않음
+                if items_waiting > 0:
+                    warning_message = f"분류중인 물품이 있습니다 ({items_waiting}개)"
+                    
+                    # 팝업 메시지 표시
+                    popup = QMessageBox(self)
+                    popup.setIcon(QMessageBox.Warning)
+                    popup.setText(warning_message)
+                    popup.setWindowTitle("경고")
+                    popup.setStandardButtons(QMessageBox.Ok)
+                    popup.show()
+                    
+                    # 1초 후 자동으로 닫히도록 설정
+                    QTimer.singleShot(1000, popup.close)
+                    
+                    # 로그 추가
+                    self.add_log_message(f"{QDateTime.currentDateTime().toString('hh:mm:ss')} - 정지 취소: {warning_message}")
+                    return
+            
             # 버튼 클릭 효과 - 시각적 피드백
             self.btn_stop.setStyleSheet(self.btn_stop.styleSheet() + "QPushButton:focus { border: 2px solid #aa2e24; }")
             QTimer.singleShot(150, lambda: self.btn_stop.setStyleSheet(self.btn_stop.styleSheet().replace("QPushButton:focus { border: 2px solid #aa2e24; }", "")))
@@ -278,6 +303,7 @@ class DevicesPage(BasePage):
             # 데이터 매니저를 통해 서버에 요청 - action 필드 사용
             result = self.data_manager.control_conveyor("stop")
             
+            # 이하 기존 코드와 동일
             if result and result.get("success", False):
                 self.current_sorter_state = "stopped"  # 상태 업데이트
                 self.conveyor_status.setText("정지")
@@ -298,7 +324,7 @@ class DevicesPage(BasePage):
         except Exception as e:
             logger.error(f"분류기 정지 중 오류: {str(e)}")
             self.show_status_message(f"분류기 정지 오류: {str(e)}", is_error=True)
-    
+        
     def update_conveyor_status(self):
         """컨베이어 상태 업데이트"""
         try:
@@ -338,52 +364,28 @@ class DevicesPage(BasePage):
                 self.list_logs.takeItem(self.list_logs.count() - 1)
     
     def update_ui(self):
-        """UI 요소 업데이트"""
+        """UI 요소 업데이트 - 간소화 버전"""
         try:
             # 서버 연결 상태 확인
             if self.data_manager.is_server_connected():
-                # 재고 데이터 가져오기
-                warehouse_data = self.data_manager.get_warehouse_data()
-                
-                # 재고 라벨 업데이트
-                self.inventory_A.setText(f"{warehouse_data['A']['used']}개")
-                self.inventory_B.setText(f"{warehouse_data['B']['used']}개")
-                self.inventory_C.setText(f"{warehouse_data['C']['used']}개")
-                
-                # 대기 항목 데이터 가져오기
-                waiting_count = self.data_manager.get_waiting_items()
-                self.inventory_waiting.setText(f"{waiting_count}개")
-                
-                # 에러 건수는 서버에서 제공하지 않을 경우 로그에서 계산
-                error_count = 0
-                if hasattr(self, 'list_logs'):
-                    for i in range(self.list_logs.count()):
-                        log_text = self.list_logs.item(i).text()
-                        if "오류" in log_text or "실패" in log_text:
-                            error_count += 1
-                
-                self.inventory_error.setText(f"{error_count}개")
-                
-                # 총 처리 건수 = 창고 재고 합계
-                total_count = sum([warehouse_data[wh]['used'] for wh in ['A', 'B', 'C']])
-                
-                self.inventory_waiting_2.setText(f"{total_count}개")
-                
-                # 오류는 항상 빨간색
-                if error_count > 0:
-                    self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
-                else:
-                    self.inventory_error.setStyleSheet("color: #757575;")
-                
-                # 컨베이어 제어 버튼 활성화
+                # 컨베이어 제어 버튼 활성화 (필수)
                 self.btn_start.setEnabled(True)
                 self.btn_pause.setEnabled(True)
                 self.btn_stop.setEnabled(True)
                 
+                # 초기 상태에서만 기본값 설정 (0개로 시작)
+                if not hasattr(self, '_ui_initialized') or not self._ui_initialized:
+                    self.inventory_A.setText("0개")
+                    self.inventory_B.setText("0개")
+                    self.inventory_C.setText("0개")
+                    self.inventory_error.setText("0개")
+                    self.inventory_waiting.setText("0개")
+                    self.inventory_waiting_2.setText("0개")
+                    self._ui_initialized = True
             else:
                 # 서버 연결이 없는 경우 UI 초기화
                 self.reset_ui_for_disconnection()
-        
+            
         except Exception as e:
             logger.error(f"UI 업데이트 중 오류: {str(e)}")
             self.show_status_message(f"UI 업데이트 오류: {str(e)}", is_error=True)
@@ -409,6 +411,7 @@ class DevicesPage(BasePage):
     def handleSorterEvent(self, action, payload):
         try:
             if action == "status_update":
+                # 상태 업데이트 처리
                 state = payload.get("state", "")
                 if state:
                     self.current_sorter_state = state
@@ -426,37 +429,38 @@ class DevicesPage(BasePage):
                         self.conveyor_status.setText("정지")
                         self.conveyor_status.setStyleSheet("background-color: #F44336; color: white; border-radius: 3px; padding: 5px; font-weight: bold;")
                         self.conveyor_running = False
+                    
+                    # 분류 카운트 정보 업데이트
+                    if "sort_counts" in payload:
+                        sort_counts = payload.get("sort_counts", {})
+                        # 분류 결과 UI 업데이트
+                        self.inventory_A.setText(f"{sort_counts.get('A', 0)}개")
+                        self.inventory_B.setText(f"{sort_counts.get('B', 0)}개")
+                        self.inventory_C.setText(f"{sort_counts.get('C', 0)}개")
+                        self.inventory_error.setText(f"{sort_counts.get('E', 0)}개")
                         
+                        # 대기 항목 수 업데이트
+                        waiting_items = payload.get("items_waiting", 0)
+                        self.inventory_waiting.setText(f"{waiting_items}개")
+                        
+                        # 총 처리 건수 업데이트
+                        total_count = sum([sort_counts.get(wh, 0) for wh in ['A', 'B', 'C']])
+                        self.inventory_waiting_2.setText(f"{total_count}개")
+                        
+                        # 오류 강조 스타일
+                        if sort_counts.get('E', 0) > 0:
+                            self.inventory_error.setStyleSheet("color: #F44336; font-weight: bold;")
+                        else:
+                            self.inventory_error.setStyleSheet("color: #757575;")
+                    
                     logger.debug(f"분류기 상태 업데이트: {state}")
-            
-            elif action == "process_item":
-                # JSON 구조에 맞게 item, qr_code, destination 필드 참조
-                item = payload.get("item", {})
-                qr_code = item.get("qr_code", "") 
-                destination = item.get("destination", "")
-                timestamp = payload.get("timestamp", "")
                 
-                # 로그 메시지 생성 - QR 코드 참조로 통일
-                if destination in ["A", "B", "C"]:
-                    log_message = f"{timestamp} - QR {qr_code} 인식됨, 창고 {destination}으로 분류"
-                    
-                    # 해당 창고의 재고를 1 증가 (UI 반영 용도)
-                    if destination in self.inventory_counts:
-                        self.inventory_counts[destination] += 1
-                else:
-                    log_message = f"{timestamp} - QR {qr_code} 인식 실패. 분류 오류 발생."
-                    
-                    # 오류 카운트 증가
-                    self.inventory_counts["error"] += 1
+            # 필요하다면 다른 이벤트 처리 추가 가능
                 
-                # 로그 목록에 추가
-                self.add_log_message(log_message)
-                
-                logger.info(f"아이템 처리: {log_message}")
         except Exception as e:
             logger.error(f"분류기 이벤트 처리 오류: {str(e)}")
             self.show_status_message(f"분류기 이벤트 처리 오류: {str(e)}", is_error=True)
-    
+            
     # === BasePage 메서드 오버라이드 ===
     def on_server_connected(self):
         """서버 연결 성공 시 처리"""

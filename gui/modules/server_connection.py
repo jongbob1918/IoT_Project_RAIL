@@ -19,12 +19,12 @@ class ServerConnection(QObject):
     connectionStatusChanged = pyqtSignal(bool, str)  # 연결 상태 변경 신호 (연결됨, 메시지)
     eventReceived = pyqtSignal(str, str, dict)  # 서버 이벤트 수신 신호 (카테고리, 액션, 페이로드)
     
-    def __init__(self, server_host="localhost", server_port=8000):
+    def __init__(self, server_host="localhost", server_port=7999):
         """생성자
         
         Args:
             server_host: 서버 호스트 (기본값: localhost)
-            server_port: 서버 포트 (기본값: 8000)
+            server_port: 서버 포트 (기본값: 7999)
         """
         super().__init__()
         
@@ -444,10 +444,6 @@ class ServerConnection(QObject):
         response = self._send_request('POST', 'sort/emergency')
         return self._standardize_response(response, "분류기 긴급 정지")
     
-    def get_sorter_status(self):
-        """분류기 상태 조회"""
-        response = self._send_request('GET', 'sort/status')
-        return self._standardize_response(response, "분류기 상태 조회")
     
     # ===== 환경 제어 API =====
     
@@ -763,11 +759,3 @@ class ServerConnection(QObject):
             return default_thresholds
         
         return standardized.get("data", {})
-
-    # sort 관련 API 호출 메서드에 상세 로깅 추가
-    def get_sorter_status(self):
-        """분류기 상태 조회"""
-        logger.info("분류기 상태 조회 API 호출 시작")
-        response = self._send_request('GET', 'sort/status')
-        logger.info(f"분류기 상태 조회 API 응답: {response}")
-        return self._standardize_response(response, "분류기 상태 조회")

@@ -210,19 +210,25 @@ class DashboardPage(BasePage):
         """유통기한 임박 상품 수량 설정"""
         self.exp_soon.setText(f"임박 {count}건")
     
-    def set_conveyor_status(self, is_on):
+    def set_conveyor_status(self, status):
         """컨베이어 상태 설정"""
-        # 0: 정지, 1: 가동중
-        status = "가동중" if is_on == 1 else "정지"
-        self.conveyor_status.setText(f"{status}")
-        
-        if is_on == 1:  # 가동중
+        # 0: 정지, 1: 가동중, 2: 일시정지
+        if status == 1:  # 가동중
+            self.conveyor_status.setText("가동중")
             self.conveyor_status.setStyleSheet("""
                 background-color: #CCFFCC;
                 border-radius: 3px;
                 padding: 2px;
             """)
-        else:  # 정지
+        elif status == 2:  # 일시정지
+            self.conveyor_status.setText("일시정지")
+            self.conveyor_status.setStyleSheet("""
+                background-color: #FFFF99;
+                border-radius: 3px;
+                padding: 2px;
+            """)
+        else:  # 정지 (0 또는 기타 값)
+            self.conveyor_status.setText("정지")
             self.conveyor_status.setStyleSheet("""                
                 background-color: #CCCCCC;
                 border-radius: 3px;
