@@ -272,7 +272,7 @@ class DevicesPage(BasePage):
                 return
             
             # 대기 물품 확인 - 현재 상태 가져오기
-            sorting_status = self.data_manager.get_sorting_status()
+            sorting_status = self.data_manager.get_sorter_status()
             if sorting_status and sorting_status.get("success", False):
                 status_data = sorting_status.get("data", {}).get("status", {})
                 items_waiting = status_data.get("items_waiting", 0)

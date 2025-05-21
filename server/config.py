@@ -76,7 +76,7 @@ def get_warehouse_config():
 WAREHOUSES = get_warehouse_config()
 
 # ===== 로깅 설정 =====
-LOG_LEVEL = "INFO"
+LOG_LEVEL = "DEBUG"
 LOG_FILE = "server.log"
 LOG_MAX_SIZE = 10 * 1024 * 1024  # 10MB
 LOG_BACKUP_COUNT = 5

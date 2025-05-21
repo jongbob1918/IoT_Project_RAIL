@@ -182,9 +182,12 @@ class DataManager(QObject):
         
         # 데이터 유형별 폴링 주기 설정 (초 단위)
         polling_intervals = {
-            "temperature_thresholds": 120,  # 온도 임계값은 2분마다
-            "environment": 120,             # 환경 데이터는 온도 이벤트로 실시간 업데이트되므로 거의 폴링 필요 없음
-            # ... 기존 폴링 간격 ...
+            "warehouse": 120,     # 환경/창고 데이터는 2분마다
+            "inventory": 300,     # 재고 데이터는 5분마다
+            "expiry": 600,        # 유통기한 데이터는 10분마다
+            "access_logs": 300,   # 출입 로그는 5분마다
+            "waiting": 300,       # 대기 데이터는 5분마다
+            "conveyor": 3         # 분류기 상태는 3초마다 (추가)
         }
         
         # 데이터 유형별 마지막 폴링 시간
@@ -718,7 +721,7 @@ class DataManager(QObject):
         
         try:
             # 분류기 상태 조회 API 호출
-            response = self._server_connection.get_sorter_status()
+            response = self._server_connection.get_sorting_status()
             
             # 응답 처리
             if response:
@@ -733,6 +736,7 @@ class DataManager(QObject):
                     elif status == "pause":
                         self._conveyor_status = 2  # 일시정지
                 else:
+                        
                         self._conveyor_status = 0  # 정지
                 
                 # 변경 신호 발생
@@ -956,3 +960,15 @@ class DataManager(QObject):
         # 자동 정지 타이머 취소 (일시정지 상태에서는 타임아웃 방지)
         self._cancel_auto_stop_timer()
         # ...
+    def get_sorter_status(self):
+        """분류기 상태 정보 조회"""
+        if not self.is_server_connected():
+            logger.warning("서버 연결 없음 - 분류기 상태를 조회할 수 없습니다.")
+            return {"success": False, "message": "서버 연결 없음"}
+        
+        try:
+            # ServerConnection의 get_sorting_status 호출
+            return self._server_connection.get_sorting_status()
+        except Exception as e:
+            logger.error(f"분류기 상태 조회 오류: {str(e)}")
+            return {"success": False, "message": str(e)}

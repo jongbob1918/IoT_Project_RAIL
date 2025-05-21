@@ -78,25 +78,31 @@ class SortController:
         if content.startswith('bc'):
             self._handle_barcode(content)
             return
-            
-        # 표준 프로토콜로 파싱
-        _, _, payload = parse_message(content)
         
-        if not payload:
-            return
-            
-        # 이벤트 타입에 따른 처리
-        if payload.startswith(SORT_EVENT_IR):
+        # IR 센서 이벤트 직접 확인 (parse_message 사용하지 않음)
+        if content.startswith(SORT_EVENT_IR):
             # IR 센서 이벤트
-            self._handle_ir_sensor(payload)
-        elif payload.startswith(SORT_EVENT_BARCODE):
+            self._handle_ir_sensor(content)
+        elif content.startswith(SORT_EVENT_BARCODE):
             # 바코드 인식 이벤트
-            self._handle_barcode(payload)
-        elif payload.startswith(SORT_EVENT_SORTED):
+            self._handle_barcode(content)
+        elif content.startswith(SORT_EVENT_SORTED):
             # 분류 완료 이벤트
-            self._handle_sort_complete(payload)
+            self._handle_sort_complete(content)
         else:
-            logger.debug(f"처리되지 않은 이벤트: {content}")
+            # 메시지 구조가 예상과 다른 경우에만 파싱 시도
+            _, _, payload = parse_message(content)
+            if payload:
+                if payload.startswith(SORT_EVENT_IR):
+                    self._handle_ir_sensor(payload)
+                elif payload.startswith(SORT_EVENT_BARCODE):
+                    self._handle_barcode(payload)
+                elif payload.startswith(SORT_EVENT_SORTED):
+                    self._handle_sort_complete(payload)
+                else:
+                    logger.debug(f"처리되지 않은 이벤트: {content}")
+            else:
+                logger.debug(f"처리되지 않은 이벤트: {content}")
     
     def handle_response(self, message):
         """응답 처리"""
@@ -220,8 +226,15 @@ class SortController:
     def _handle_ir_sensor(self, payload):
         """IR 센서 이벤트 처리"""
         try:
-            # 값 추출 (ir1 - 1=감지됨)
-            detected = int(payload[2:]) if len(payload) > 2 else 0
+            # 원본 페이로드 로깅
+            logger.debug(f"IR 센서 원본 메시지: {payload}")
+            
+            # ir1 형식에서 1만 추출 (숫자 부분만 가져옴)
+            detected = 0
+            for char in payload:
+                if char.isdigit():
+                    detected = int(char)
+                    break
             
             if detected == 1:
                 logger.info("입구 IR 센서 물품 감지")

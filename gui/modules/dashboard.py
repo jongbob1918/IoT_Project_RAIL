@@ -65,6 +65,13 @@ class DashboardPage(BasePage):
             font.setWeight(QFont.Weight.Bold)
             label.setFont(font)
     
+    def showEvent(self, event):
+        super().showEvent(event)
+        # 페이지가 표시될 때 즉시 상태 업데이트
+        self.update_conveyor_status()
+        self.update_warehouse_status() 
+        self.update_expiry_status()
+
     def setup_time_timer(self):
         """시간 표시용 타이머 설정"""
         self.time_timer = QTimer(self)
@@ -194,13 +201,12 @@ class DashboardPage(BasePage):
             self.show_status_message("유통기한 정보 업데이트 오류", is_error=True)
     
     def update_conveyor_status(self):
-        """컨베이어 상태 업데이트"""
         try:
+            # get_conveyor_status()를 호출하여 현재 상태를 가져옴
             conveyor_status = self.data_manager.get_conveyor_status()
             self.set_conveyor_status(conveyor_status)
         except Exception as e:
             logger.error(f"컨베이어 상태 업데이트 오류: {str(e)}")
-            self.show_status_message("컨베이어 상태 업데이트 오류", is_error=True)
     
     def set_expired_count(self, count):
         """유통기한 경과 상품 수량 설정"""
