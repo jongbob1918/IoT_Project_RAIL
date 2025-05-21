@@ -54,7 +54,41 @@ class EnvController:
     
         # DB에서 설정 로드 (기본값 업데이트)
         self._load_warehouse_settings()
+
+        # 명시적으로 핸들러 등록 호출 
+        if tcp_handler:
+            self.register_handlers()
+            
+            # 핸들러 등록 검증 (디버깅용)
+            if hasattr(tcp_handler, 'device_handlers'):
+                env_handlers = tcp_handler.device_handlers.get('env_controller', {})
+                h_handlers = tcp_handler.device_handlers.get('H', {})
+                handlers_info = {
+                    'env_controller': list(env_handlers.keys()) if env_handlers else [],
+                    'H': list(h_handlers.keys()) if h_handlers else []
+                }
+                logger.info(f"환경 컨트롤러 핸들러 등록 상태: {handlers_info}")
+
+
+    def register_handlers(self):
+        """환경 제어 핸들러 등록"""
+        if not self.tcp_handler:
+            logger.warning("TCP 핸들러가 없어 핸들러를 등록할 수 없습니다.")
+            return
+            
+        # 매핑된 디바이스 ID (env_controller)로 등록
+        self.tcp_handler.register_device_handler('env_controller', 'E', self.process_event)
+        self.tcp_handler.register_device_handler('env_controller', 'C', self.process_command)
+        self.tcp_handler.register_device_handler('env_controller', 'R', self.process_response)
+        self.tcp_handler.register_device_handler('env_controller', 'X', self.process_error)
         
+        # 원본 디바이스 ID (H)로도 등록
+        self.tcp_handler.register_device_handler('H', 'E', self.process_event)
+        self.tcp_handler.register_device_handler('H', 'C', self.process_command)
+        self.tcp_handler.register_device_handler('H', 'R', self.process_response)
+        self.tcp_handler.register_device_handler('H', 'X', self.process_error)
+        
+        logger.info("환경 제어 핸들러 등록 완료")
         
     def _set_default_warehouse_settings(self):
         """기본 창고 설정 적용"""

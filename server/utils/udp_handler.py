@@ -109,9 +109,7 @@ class UDPBarcodeHandler:
                         logger.debug(f"프레임 수신 완료: {len(self.buffer)} 바이트")
                         # 이미지 디코딩 및 QR 코드 인식
                         self._process_image()
-                    else:
-                        logger.warning(f"불완전한 프레임: {len(self.buffer)}/{self.expected_size} 바이트")
-                    
+                        
                     self.receiving = False
                     self.buffer.clear()
                 

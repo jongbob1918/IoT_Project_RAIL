@@ -33,10 +33,15 @@ DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}
 # ===== TCP 하드웨어 통신 설정 =====
 TCP_PORT = 9000
 HARDWARE_IP = {
-    'sort_controller': '192.168.0.101',
-    'env_ab_controller': '192.168.0.102', 
-    'env_cd_controller': '192.168.0.103',
-    'access_controller': '192.168.0.104'
+    'sort_controller': '192.168.0.169',
+    'env_controller': '192.168.0.10'
+}
+
+# ===== 디바이스 id 자동 매핑 =====
+AUTO_DEVICE_MAPPING = {
+    '192.168.0.169': 'S',  # 분류기 ESP32
+    '192.168.0.10': 'H',   # 환경제어 디바이스
+ 
 }
 
 # ===== 멀티포트모드 TCP 하드웨어 통신 설정 =====
@@ -102,5 +107,6 @@ CONFIG = {
     "LOG_FILE": LOG_FILE,
     "LOG_MAX_SIZE": LOG_MAX_SIZE,
     "LOG_BACKUP_COUNT": LOG_BACKUP_COUNT,
-    "STATUS_CHECK_INTERVAL": STATUS_CHECK_INTERVAL
+    "STATUS_CHECK_INTERVAL": STATUS_CHECK_INTERVAL,
+    "AUTO_DEVICE_MAPPING": AUTO_DEVICE_MAPPING,
 }

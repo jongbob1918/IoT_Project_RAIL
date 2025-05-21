@@ -950,3 +950,9 @@ class DataManager(QObject):
             self.polling_thread.join(1.0)
             
         logger.info("DataManager 종료 완료")
+
+    def pause_sorter(self):
+        # ...
+        # 자동 정지 타이머 취소 (일시정지 상태에서는 타임아웃 방지)
+        self._cancel_auto_stop_timer()
+        # ...
