@@ -296,8 +296,6 @@ class SortController:
             # 바코드 처리
             if msg_type == "E" and raw_barcode.startswith("bc"):
                 barcode = raw_barcode[2:]
-                self._save_barcode_to_db(barcode)
-
                 # 바코드 파싱 (1자리 카테고리)
                 if len(barcode) >= 1:
                     category = barcode[0]
