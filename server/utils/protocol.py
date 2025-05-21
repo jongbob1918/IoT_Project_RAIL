@@ -18,7 +18,7 @@ MSG_COMMAND = 'C'  # 명령
 MSG_RESPONSE = 'R'  # 응답
 MSG_ERROR = 'X'  # 에러
 
-# 공통 응답 코드
+# 공통 응답 + 에러
 RESPONSE_OK = 'ok'  # 성공
 ERROR_COMM = 'e1'   # 통신 오류
 ERROR_SENSOR = 'e2'  # 센서 오류
@@ -34,6 +34,15 @@ SORT_CMD_START = 'st'      # 시작
 SORT_CMD_STOP = 'sp'       # 정지
 SORT_CMD_PAUSE = 'ps'      # 일시정지
 SORT_CMD_SORT = 'so'       # 분류 (A~E)
+
+# 게이트 이벤트
+GATE_EVENT_ID = 'id'        # 출입 모드(UID + 직원ID)
+GATE_EVENT_WRITE = 'wr'     # 등록 모드(UID + 직원ID)
+
+# 게이트 명령
+GATE_CMD_ACTION = 'ac'      # 출입 동작
+GATE_CMD_MODE = 'md'        # 출입/등록 설정
+GATE_CMD_WRITE = 'wr'       # 직원ID 기입
 
 # 분류 존 매핑
 SORT_ZONE_MAP = {
@@ -94,4 +103,23 @@ def parse_barcode(barcode):
         'category': category,
         'item_code': item_code,
         'expiry_date': expiry_date
+    }
+
+# UID+직원 파싱 함수
+def parse_id(id_str: str):
+    try:
+        # 문자열 끝의 개행 제거
+        id_str = id_str.strip()
+        
+        # UID와 직원 ID 분리
+        uid_part, emp_id = id_str.split(';')
+    except:
+        {
+            "uid": None,
+            "emp_id": None,
+            "error": "Invalid format"
+        }
+    return {
+        "uid": uid_part,
+        "emp_id": emp_id
     }
