@@ -7,6 +7,7 @@ from utils.system import Controller
 from .rfid_handler import RFIDHandler
 from .access_manager import AccessManager
 from utils.serial_handlers.gate_serial import GateSerialHandler
+from utils.protocol import *  
 
 handler = GateSerialHandler(port='/dev/ttyUSB0')
 handler.connect()
@@ -45,44 +46,181 @@ class GateController(Controller):
     
     def register_handlers(self):
         # gt 디바이스의 이벤트/응답 핸들러 등록
-        self.tcp_handler.register_device_handler("gt", "evt", self.handle_event)
-        self.tcp_handler.register_device_handler("gt", "res", self.handle_response)
+        self.tcp_handler.register_device_handler("G", "E", self.handle_event)
+        self.tcp_handler.register_device_handler("G", "R", self.handle_response)
+        self.tcp_handler.register_device_handler("G", "X", self.handle_error)
+        self.tcp_handler.register_device_handler('G', 'C', self.handle_command) 
+        
+        # 매핑된 디바이스 ID로도 등록
+        self.tcp_handler.register_device_handler('gate_controller', 'E', self.handle_event)
+        self.tcp_handler.register_device_handler('gate_controller', 'R', self.handle_response)
+        self.tcp_handler.register_device_handler('gate_controller', 'X', self.handle_error)
+        self.tcp_handler.register_device_handler('gate_controller', 'C', self.handle_command) 
     
     def handle_event(self, message):
         """게이트 이벤트 처리"""
-        if 'content' not in message and 'raw' not in message:
-            logger.error("이벤트 메시지에 내용이 없음")
+        if 'content' not in message:
             return
             
-        # raw 또는 content 키에서 메시지 가져오기
-        content = message.get('raw', message.get('content', ''))
-        
+        content = message['content']
         # 로그 추가
-        logger.debug(f"게이트 이벤트 수신: {content}")
+        logger.debug(f"수신된 이벤트: {content}")
         
-        # 메시지 파싱
-        device_id, msg_type, payload = parse_message(content)
-        
-        # 유효성 검증
-        if not device_id or not msg_type or device_id != 'G':
-            logger.warning(f"잘못된 이벤트 메시지: {content}")
+        # IR 센서 이벤트 직접 확인 (parse_message 사용하지 않음)
+        if content.startswith(GATE_EVENT_ID):
+            # IR 센서 이벤트
+            self._handle_id(content)
+        elif content.startswith(GATE_EVENT_WRITE):
+            # 바코드 인식 이벤트
+            self._handle_write_card(content)
+        else:
+            # 메시지 구조가 예상과 다른 경우에만 파싱 시도
+            _, _, payload = parse_message(content)
+            if payload:
+                if payload.startswith(GATE_EVENT_ID):
+                    self._handle_id(payload)
+                elif payload.startswith(GATE_EVENT_WRITE):
+                    self._handle_write_card(payload)
+                else:
+                    logger.debug(f"처리되지 않은 이벤트: {content}")
+            else:
+                logger.debug(f"처리되지 않은 이벤트: {content}")
+    
+    def handle_response(self, message):
+        """응답 처리"""
+        if 'content' in message:
+            content = message['content']
+            _, _, payload = parse_message(content)
+            
+            if payload == RESPONSE_OK:
+                logger.debug("명령 실행 성공 응답 수신")
+            else:
+                logger.debug(f"알 수 없는 응답: {content}")
+
+    def handle_error(self, message):
+        """오류 처리"""
+        if 'content' in message:
+            content = message['content']
+            _, _, payload = parse_message(content)
+            
+            error_code = payload
+            logger.warning(f"분류기 오류: {error_code}")
+            
+            # 소켓 이벤트 발송
+            self._emit_standardized_event("sort", "error", {
+                "error_code": error_code,
+                "error_message": f"분류기 오류: {error_code}"
+            })
+
+    def handle_command(self, message):
+        """명령 메시지 처리 - 'C' 타입 메시지"""
+        if 'content' not in message:
             return
         
-        # 이벤트 메시지가 아닌 경우 무시
-        if msg_type != 'E':
-            logger.warning(f"이벤트가 아닌 메시지: {content}")
+        content = message['content']
+        logger.debug(f"분류기 명령 수신: {content}")
+        
+        # SC 접두사 제거 (있는 경우)
+        if content.startswith('GC'):
+            content = content[2:]
+        
+        # 명령 타입별 처리
+        if content.startswith('GATE_CMD_ACTION'):
+            # 시작 명령
+            self.action_gate()
+            return True
+        
+        elif content.startswith('GATE_CMD_MODE'):
+            # 정지 명령
+            self.mode_gate()
+            return True
+        
+        elif content.startswith('GATE_CMD_WRITE'):
+            # 일시정지 명령
+            self.write_gate()
+            return True
+        
+        # 이 외의 경우 로그로 기록
+        logger.debug(f"처리되지 않은 명령: {content}")
+        return False
+
+
+
+
+    def _handle_id(self, data):
+        """ID 태그 이벤트 처리"""
+        try:
+            # 원본 페이로드 로깅
+            logger.debug(f"ID 태그 원본 메시지: {data}")
+
+            id = data[2:] if id.startswith("id") else data
+            
+            from utils.protocol import parse_id
+            uid, eid = parse_id(id)
+
+
+            # UID로 DB에서 직원ID를 불러옴.
+            # 직원ID가 서로 같다 = 허락(GCac1) / 다르다 = 거부(GCac0)
+
+
+        except ValueError:
+            logger.error(f"ID 태그 파싱 오류: {data}")
+
+    def _handle_write_card(self, data):
+        try:
+            # 원본 페이로드 로깅
+            logger.debug(f"wr 태그 원본 메시지: {data}")
+
+            id = data[2:] if id.startswith("wr") else data
+            
+            from utils.protocol import parse_id
+            uid, eid = parse_id(id)
+
+
+            # GUI에 신호 송신
+
+
+        except Exception as e:
+            self.logger.error(f"wr 처리 중 오류 발생: {str(e)}")
+
+    def action_gate(self):
+        return 0
+
+    def mode_gate(self):
+        return 0
+
+    def write_gate(self):
+        return 0
+
+
+
+
+
+
+
+
+
+    def _emit_standardized_event(self, category, action, payload):
+        """표준화된 소켓 이벤트 발송"""
+        if not self.socketio:
             return
-    
-    def process_event(self, content: str):
-        # 필요시 추가적인 이벤트 처리 로직 구현
-        pass
-    
-    def handle_response(self, message_data: Dict[str, Any]):
-        self.rfid_handler.handle_response(message_data)
-    
-    def process_response(self, content: str):
-        # 필요시 추가적인 응답 처리 로직 구현
-        pass
+            
+        event_data = {
+            "type": "event",
+            "category": category,
+            "action": action,
+            "payload": payload,
+            "timestamp": int(time.time())
+        }
+        
+        self.socketio.emit("event", event_data, namespace="/ws")
+
+
+
+
+
+
+
     
     # ==== 일일 통계 초기화 ====
     def _initialize_daily_stats(self):
