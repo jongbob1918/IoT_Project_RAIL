@@ -208,11 +208,21 @@ class WindowClass(QMainWindow):
     def on_server_event(self, category, action, payload):
             """서버 이벤트 수신 시 각 페이지에 전달"""
             # API 구조와 일치하도록 업데이트
-            if category == "sorter" and hasattr(self.page_devices, "handleSorterEvent"):
+            if category in ["sort", "sorter"] and hasattr(self.page_devices, "handleSorterEvent"):
                 self.page_devices.handleSorterEvent(action, payload)
-                # 대시보드에도 일부 이벤트 전달
-                if action == "status_update" and "is_running" in payload:
-                    self.data_manager._conveyor_status = 1 if payload["is_running"] else 0
+                
+                # 대시보드에도 이벤트 전달
+                if action == "status_update" and "state" in payload:
+                    state = payload.get("state", "")
+                    
+                    # state 값에 따라 컨베이어 상태 설정
+                    if state == "running":
+                        self.data_manager._conveyor_status = 1  # 가동중
+                    elif state == "pause":
+                        self.data_manager._conveyor_status = 2  # 일시정지
+                    else:  # stopped 또는 기타 상태
+                        self.data_manager._conveyor_status = 0  # 정지
+                        
                     self.data_manager.conveyor_status_changed.emit()
             elif category == "environment" and hasattr(self.page_environment, "handleEnvironmentEvent"):
                 self.page_environment.handleEnvironmentEvent(action, payload)

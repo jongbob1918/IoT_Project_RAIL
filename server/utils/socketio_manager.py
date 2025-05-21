@@ -35,7 +35,7 @@ class SocketIOManager:
                 "timestamp": int(time.time())
             }
             
-            self.socketio.emit("event", event_data)
+            self.socketio.emit("event", event_data, namespace="/ws")
             logger.debug(f"Socket.IO 이벤트 발송: {category}/{action}")
             return True
         except Exception as e:
@@ -69,7 +69,7 @@ class SocketIOManager:
         }
         
         try:
-            self.socketio.emit("event", event_data)
+            self.socketio.emit("event", event_data, namespace="/ws")
             logger.debug(f"Socket.IO 오류 이벤트 발송: {category}/{action} - {code}")
             return True
         except Exception as e:

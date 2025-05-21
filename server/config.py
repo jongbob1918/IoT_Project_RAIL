@@ -33,13 +33,13 @@ DB_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}
 # ===== TCP 하드웨어 통신 설정 =====
 TCP_PORT = 9000
 HARDWARE_IP = {
-    'sort_controller': '192.168.0.169',
+    'sort_controller': '192.168.232.169',
     'env_controller': '192.168.0.10'
 }
 
 # ===== 디바이스 id 자동 매핑 =====
 AUTO_DEVICE_MAPPING = {
-    '192.168.0.169': 'S',  # 분류기 ESP32
+    '192.168.232.169': 'S',  # 분류기 ESP32
     '192.168.0.10': 'H',   # 환경제어 디바이스
  
 }

@@ -30,6 +30,9 @@ class UDPBarcodeHandler:
         self.receiving = False
         self.expected_size = 0
         self.last_sent_data = ""  # 중복 전송 방지
+        self.last_sent_time = 0   # 마지막 데이터 전송 시간
+        self.frame_count = 0      # 프레임 카운터
+        self.last_fps_check = time.time()  # FPS 계산용 시간
         
         # QR 코드 감지기 초기화
         try:
@@ -38,6 +41,10 @@ class UDPBarcodeHandler:
         except Exception as e:
             logger.error(f"QR 코드 감지기 초기화 실패: {str(e)}")
             self.qr_detector = None
+        
+        # 성능 모니터링 변수
+        self.fps = 0
+        self.process_times = []  # 이미지 처리 시간 기록
         
         logger.info(f"UDP 바코드 핸들러 초기화 완료 - {host}:{port}")
     
@@ -51,7 +58,10 @@ class UDPBarcodeHandler:
             # UDP 소켓 설정
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.udp_socket.bind((self.host, self.port))
-            self.udp_socket.settimeout(5)
+            # 타임아웃 감소 - 더 빠른 응답성 위해 0.1초로 설정
+            self.udp_socket.settimeout(0.1)
+            # 소켓 버퍼 크기 증가 (더 많은 데이터를 빠르게 처리)
+            self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024 * 1024)
             self.running = True
             
             logger.info(f"UDP 바코드 핸들러 시작됨: {self.host}:{self.port}")
@@ -88,92 +98,138 @@ class UDPBarcodeHandler:
     
     def _receive_loop(self):
         """UDP 데이터 수신 루프"""
-        PACKET_SIZE = 1024
+        # 패킷 크기 증가 - 더 큰 데이터 청크 처리
+        PACKET_SIZE = 4096  # 1024에서 4096으로 증가
+        
+        # 마지막 프레임 처리 시간 기록
+        last_frame_time = 0
         
         logger.info("UDP 데이터 수신 루프 시작")
         while self.running:
             try:
-                data, addr = self.udp_socket.recvfrom(PACKET_SIZE + 50)
-                logger.debug(f"UDP 데이터 수신: {len(data)} 바이트 (from {addr})")
+                data, addr = self.udp_socket.recvfrom(PACKET_SIZE)
                 
+                # 지나치게 자세한 로그 제거 (성능 향상)
                 if data.startswith(b'FRAME_START'):
-                    self.buffer.clear()
+                    self.buffer = bytearray()  # 새 버퍼 생성 (메모리 재사용)
                     parts = data.decode().strip().split(':')
                     if len(parts) == 2:
                         self.expected_size = int(parts[1])
                         self.receiving = True
-                        logger.debug(f"프레임 수신 시작: {self.expected_size} 바이트")
+                        # 큰 프레임을 미리 예약하여 메모리 할당 최적화
+                        self.buffer = bytearray(self.expected_size)
+                        self.buffer_position = 0
                 
                 elif data.startswith(b'FRAME_END'):
-                    if len(self.buffer) == self.expected_size:
-                        logger.debug(f"프레임 수신 완료: {len(self.buffer)} 바이트")
-                        # 이미지 디코딩 및 QR 코드 인식
-                        self._process_image()
+                    if self.buffer_position == self.expected_size:
+                        # 성능 측정
+                        current_time = time.time()
+                        if last_frame_time > 0:
+                            frame_interval = current_time - last_frame_time
+                            instant_fps = 1 / frame_interval if frame_interval > 0 else 0
+                            # 평균 FPS 계산 (5프레임 이동 평균)
+                            self.frame_count += 1
+                            if len(self.process_times) >= 5:
+                                self.process_times.pop(0)
+                            self.process_times.append(instant_fps)
+                            self.fps = sum(self.process_times) / len(self.process_times)
+                            
+                            # 주기적 FPS 로깅 (5초마다)
+                            if current_time - self.last_fps_check > 5:
+                                logger.info(f"현재 프레임 처리 속도: {self.fps:.2f} FPS")
+                                self.last_fps_check = current_time
                         
+                        last_frame_time = current_time
+                        # 이미지 처리 (QR 코드 인식)
+                        self._process_image()
+                    else:
+                        logger.warning(f"불완전한 프레임: {self.buffer_position}/{self.expected_size} 바이트")
+                    
                     self.receiving = False
-                    self.buffer.clear()
                 
                 elif self.receiving:
-                    self.buffer.extend(data)
+                    # 더 효율적인 버퍼 관리
+                    data_len = len(data)
+                    if self.buffer_position + data_len <= self.expected_size:
+                        self.buffer[self.buffer_position:self.buffer_position + data_len] = data
+                        self.buffer_position += data_len
             
             except socket.timeout:
-                # 타임아웃은 정상적인 동작
-                pass
+                # 타임아웃 - 더 이상 로그 남기지 않음
+                continue
             except Exception as e:
                 logger.error(f"UDP 데이터 처리 오류: {str(e)}")
-                time.sleep(1)  # 연속 오류 방지
+                # 오류 발생 시 짧은 대기 후 계속
+                time.sleep(0.1)
         
         logger.info("UDP 데이터 수신 루프 종료")
     
     def _process_image(self):
         """수신된 이미지 처리 및 QR 코드 인식"""
+        start_time = time.time()
+        
         try:
             # 바이트 배열을 이미지로 변환
-            jpg = np.frombuffer(bytes(self.buffer), dtype=np.uint8)
+            jpg = np.frombuffer(bytes(self.buffer[:self.buffer_position]), dtype=np.uint8)
             img = cv2.imdecode(jpg, cv2.IMREAD_COLOR)
             
             if img is None:
                 logger.warning("이미지 디코딩 실패")
                 return
             
-            # 디버그 모드일 때만 OpenCV 창 표시
+            # 디버그 모드 최적화: 낮은 해상도로 표시
             if self.debug_mode:
-                cv2.imshow("QR UDP Stream", img)
+                # 이미지 크기 축소 (표시 성능 개선)
+                display_img = cv2.resize(img, (640, 480))
+                cv2.imshow("QR UDP Stream", display_img)
                 cv2.waitKey(1)
             
             if self.qr_detector is None:
                 logger.error("QR 코드 감지기가 초기화되지 않았습니다.")
                 return
             
+            # 매 3번째 프레임에서만 QR 코드 감지 (성능 최적화)
+            # 실시간성이 중요하다면 이 부분 제거
+            if self.frame_count % 3 != 0 and not self.debug_mode:
+                return
+                
             # QR 코드 인식
             qr_data, points, _ = self.qr_detector.detectAndDecode(img)
             
-            if qr_data and qr_data != self.last_sent_data:
-                logger.info(f"QR 코드 인식됨: {qr_data}")
-                
-                # 디버그 모드일 때 인식된 QR코드 시각화
-                if self.debug_mode and points is not None and len(points) > 0:
-                    try:
-                        points = points.astype(int).reshape(-1, 2)
-                        cv2.polylines(img, [points], True, (0, 255, 0), 2)
-                        x, y = points[0]
-                        cv2.putText(img, qr_data, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                        cv2.imshow("QR UDP Stream", img)
-                        cv2.waitKey(1)
-                    except Exception as e:
-                        logger.error(f"QR 코드 시각화 실패: {str(e)}")
-                
-                # 콜백 함수 호출하여 바코드 데이터 전달
-                if self.callback:
-                    try:
-                        self.callback(qr_data)
-                        logger.debug(f"바코드 데이터 콜백 처리 성공: {qr_data}")
-                    except Exception as e:
-                        logger.error(f"바코드 콜백 처리 중 오류: {str(e)}")
-                
-                self.last_sent_data = qr_data
-            elif qr_data:
-                logger.debug(f"이미 처리된 QR 코드 무시: {qr_data}")
+            current_time = time.time()
+            # 중복 데이터 처리 로직 개선: 같은 코드도 일정 시간 경과 시 다시 처리
+            if qr_data:
+                # 새로운 데이터이거나 마지막 전송 후 0.3초 이상 경과했을 때만 처리
+                if qr_data != self.last_sent_data or (current_time - self.last_sent_time > 0.3):
+                    logger.info(f"QR 코드 인식됨: {qr_data}")
+                    
+                    # 디버그 모드일 때 인식된 QR코드 시각화
+                    if self.debug_mode and points is not None and len(points) > 0:
+                        try:
+                            points = points.astype(int).reshape(-1, 2)
+                            cv2.polylines(display_img, [points], True, (0, 255, 0), 2)
+                            x, y = points[0]
+                            cv2.putText(display_img, qr_data, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                            cv2.imshow("QR UDP Stream", display_img)
+                            cv2.waitKey(1)
+                        except Exception as e:
+                            # 에러 로그 최소화
+                            pass
+                    
+                    # 콜백 함수 호출하여 바코드 데이터 전달
+                    if self.callback:
+                        try:
+                            self.callback(qr_data)
+                        except Exception as e:
+                            logger.error(f"바코드 콜백 처리 중 오류: {str(e)}")
+                    
+                    self.last_sent_data = qr_data
+                    self.last_sent_time = current_time
         
         except Exception as e:
             logger.error(f"이미지 처리 중 오류: {str(e)}")
+        
+        # 이미지 처리 시간 측정
+        process_time = time.time() - start_time
+        if process_time > 0.1:  # 100ms 이상 걸렸을 때만 로그
+            logger.debug(f"이미지 처리 시간: {process_time:.3f}초")

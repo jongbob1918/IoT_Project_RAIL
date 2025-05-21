@@ -403,9 +403,9 @@ class SortController:
             "last_updated": time.time()
         }
         logger.debug(f"클라이언트로 전송하는 상태: '{self.state}'")
-        # 표준화된 이벤트 발송
-        self._emit_standardized_event("sort", "status_update", status_data)
-    
+        # 표준화된 이벤트 발송 (카테고리 이름을 "sorter"로 일관되게 사용)
+        self._emit_standardized_event("sorter", "status_update", status_data)
+        
     def _reset_auto_stop_timer(self):
         """자동 정지 타이머 초기화"""
         # 기존 타이머 취소

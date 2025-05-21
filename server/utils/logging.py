@@ -1,9 +1,12 @@
 import os
 import time
-import logging
 from logging.handlers import RotatingFileHandler
 from config import LOG_LEVEL, LOG_FILE, LOG_MAX_SIZE, LOG_BACKUP_COUNT
-
+import logging
+logging.basicConfig(
+    level=logging.DEBUG,  # INFO에서 DEBUG로 변경
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 # ==== 로거 설정 함수 (기존 코드 유지) ====
 def setup_logger(name: str = 'server') -> logging.Logger:
     """로거를 설정하고 반환합니다."""

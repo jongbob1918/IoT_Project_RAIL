@@ -248,8 +248,40 @@ class DataManager(QObject):
         logger.debug(f"서버 이벤트 수신: {category}/{action}")
         
         try:
-            # 환경 관련 이벤트 처리
-            if category == "environment":
+            # 분류기(sorter) 관련 이벤트 처리
+            if category in ["sort", "sorter"]:
+                if action == "status_update":
+                    # state 필드로 상태 확인
+                    if "state" in payload:
+                        state = payload.get("state", "")
+                        
+                        # 상태에 따라 컨베이어 상태값 설정
+                        old_status = self._conveyor_status
+                        if state == "running":
+                            self._conveyor_status = 1  # 가동중
+                        elif state == "pause":
+                            self._conveyor_status = 2  # 일시정지
+                        else:  # stopped 또는 기타 상태
+                            self._conveyor_status = 0  # 정지
+                        
+                        # 상태 변경 시에만 시그널 발생
+                        if old_status != self._conveyor_status:
+                            logger.info(f"컨베이어 상태 변경: {old_status} -> {self._conveyor_status}")
+                            self.conveyor_status_changed.emit()
+                    
+                    # 대기 물품 수 업데이트
+                    if "items_waiting" in payload:
+                        self._waiting_items = payload.get("items_waiting", 0)
+                        self.waiting_data_changed.emit()
+                    
+                    # 분류 결과 업데이트
+                    if "sort_counts" in payload:
+                        # 필요한 경우 inventory 데이터 업데이트
+                        # (예: 오늘 입고 현황 등)
+                        self.inventory_data_changed.emit()
+                        
+            # 기존 환경 관련 이벤트 처리 코드
+            elif category == "environment":
                 # 팬 상태 업데이트 이벤트
                 if action == "fan_status_update" and "warehouse" in payload:
                     warehouse_id = payload.get("warehouse")
